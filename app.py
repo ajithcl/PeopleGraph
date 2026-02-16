@@ -3,13 +3,17 @@ FamilyGraph Explorer - Flask Backend
 Python server for Neo4j family tree application
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from neo4j import GraphDatabase
 import os
 from dotenv import load_dotenv
 import logging
 import neo4j
+from werkzeug.utils import secure_filename
+import uuid
+from pathlib import Path
+
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +25,20 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend access
+
+# File upload configuration
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'photos')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+# Create upload directory if it doesn't exist
+Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+logger.info(f"📁 Upload folder: {UPLOAD_FOLDER}")
+
 
 # Neo4j Configuration
 NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
@@ -47,6 +65,31 @@ verify_connection()
 
 
 # ========== HELPER FUNCTIONS ==========
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def generate_unique_filename(person_id, original_filename):
+    """Generate unique filename for uploaded photo"""
+    ext = original_filename.rsplit('.', 1)[1].lower()
+    unique_id = str(uuid.uuid4())[:8]
+    return f"person_{person_id}_{unique_id}.{ext}"
+
+
+def delete_old_photo(person_id):
+    """Delete old photo file for a person if it exists"""
+    try:
+        # Find and delete files matching pattern person_{id}_*
+        for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+            if filename.startswith(f"person_{person_id}_"):
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                os.remove(file_path)
+                logger.info(f"Deleted old photo: {filename}")
+    except Exception as e:
+        logger.error(f"Error deleting old photo: {str(e)}")
+
+
+
 def serialize_date(value):
     if value is None:
         return None
@@ -70,7 +113,8 @@ def format_person(node):
         'nickName': node.get('nickName', ''),
         'gender': node.get('gender', ''),
         'sex': node.get('sex', ''),
-        'dateOfBirth': serialize_date(node.get('dateOfBirth', ''))
+        'dateOfBirth': serialize_date(node.get('dateOfBirth', '')),
+        'photoUrl': node.get('photoUrl', '')
     }
 
 
@@ -83,6 +127,138 @@ def health_check():
         'status': 'healthy',
         'neo4j_connected': verify_connection()
     })
+
+
+@app.route('/uploads/photos/<filename>', methods=['GET'])
+def serve_photo(filename):
+    """Serve uploaded photos"""
+    try:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    except Exception as e:
+        logger.error(f"Error serving photo: {str(e)}")
+        return jsonify({'success': False, 'error': 'Photo not found'}), 404
+
+
+@app.route('/api/persons/<person_id>/upload-photo', methods=['POST'])
+def upload_photo(person_id):
+    """Upload photo for a person"""
+    try:
+        # Check if file is in request
+        if 'photo' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No photo file provided'
+            }), 400
+
+        file = request.files['photo']
+
+        # Check if filename is empty
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+
+        # Validate file type
+        if not allowed_file(file.filename):
+            return jsonify({
+                'success': False,
+                'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'
+            }), 400
+
+        # Verify person exists
+        with driver.session() as session:
+            result = session.run("""
+                MATCH (p:Person)
+                WHERE ID(p) = $id
+                RETURN p
+            """, id=int(person_id))
+
+            if not result.single():
+                return jsonify({
+                    'success': False,
+                    'error': 'Person not found'
+                }), 404
+
+        # Delete old photo if exists
+        delete_old_photo(person_id)
+
+        # Generate unique filename
+        filename = generate_unique_filename(person_id, file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        # Save file
+        file.save(filepath)
+        logger.info(f"Photo saved: {filename}")
+
+        # Generate photo URL
+        photo_url = f"/uploads/photos/{filename}"
+
+        # Update person in database
+        with driver.session() as session:
+            result = session.run("""
+                MATCH (p:Person)
+                WHERE ID(p) = $id
+                SET p.photoUrl = $photoUrl
+                RETURN p
+            """, id=int(person_id), photoUrl=photo_url)
+
+            record = result.single()
+            person = format_person(record['p'])
+
+        return jsonify({
+            'success': True,
+            'data': person,
+            'photoUrl': photo_url,
+            'message': 'Photo uploaded successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error uploading photo: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/persons/<person_id>/delete-photo', methods=['DELETE'])
+def delete_photo(person_id):
+    """Delete photo for a person"""
+    try:
+        # Delete file from disk
+        delete_old_photo(person_id)
+
+        # Remove photoUrl from database
+        with driver.session() as session:
+            result = session.run("""
+                MATCH (p:Person)
+                WHERE ID(p) = $id
+                SET p.photoUrl = ''
+                RETURN p
+            """, id=int(person_id))
+
+            record = result.single()
+
+            if not record:
+                return jsonify({
+                    'success': False,
+                    'error': 'Person not found'
+                }), 404
+
+            person = format_person(record['p'])
+
+        return jsonify({
+            'success': True,
+            'data': person,
+            'message': 'Photo deleted successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting photo: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/api/persons', methods=['GET'])
@@ -162,7 +338,8 @@ def create_person():
                     nickName: $nickName,
                     gender: $gender,
                     sex: $sex,
-                    dateOfBirth: $dateOfBirth
+                    dateOfBirth: $dateOfBirth,
+                    photoUrl: $photoUrl
                 })
                 RETURN p
             """, 
@@ -170,7 +347,8 @@ def create_person():
                 nickName=data.get('nickName', ''),
                 gender=data.get('gender'),
                 sex=data.get('sex', ''),
-                dateOfBirth=data.get('dateOfBirth', '')
+                dateOfBirth=data.get('dateOfBirth', ''),
+                photoUrl=data.get('photoUrl', '')
             )
             
             record = result.single()
@@ -202,7 +380,8 @@ def update_person(person_id):
                     p.nickName = $nickName,
                     p.gender = $gender,
                     p.sex = $sex,
-                    p.dateOfBirth = $dateOfBirth
+                    p.dateOfBirth = $dateOfBirth,
+                    p.photoUrl = $photoUrl
                 RETURN p
             """,
                 id=int(person_id),
@@ -210,7 +389,8 @@ def update_person(person_id):
                 nickName=data.get('nickName', ''),
                 gender=data.get('gender'),
                 sex=data.get('sex', ''),
-                dateOfBirth=data.get('dateOfBirth', '')
+                dateOfBirth=data.get('dateOfBirth', ''),
+                photoUrl=data.get('photoUrl', '')
             )
             
             record = result.single()
