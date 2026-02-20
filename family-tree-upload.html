@@ -217,6 +217,9 @@
                     } else {
                         setPreviewUrl(person.photoUrl);
                     }
+                    setFormData(fd => ({ ...fd, photoUrl: person.photoUrl }));
+                } else {
+                    setPreviewUrl(null);
                 }
             }, [person.photoUrl]);
 
@@ -279,13 +282,20 @@
 
                 setSaving(true);
                 try {
+                    // Delete on server via dedicated endpoint
                     await apiService.deletePhoto(person.id);
+
+                    // Persist deletion to person record (ensure parent reloads / data refreshed)
+                    await onSave(person.id, { photoUrl: '' });
+
+                    // Update local modal state
                     setPreviewUrl(null);
                     setSelectedFile(null);
                     setFormData({ ...formData, photoUrl: '' });
+
                     alert('Photo deleted successfully');
                 } catch (error) {
-                    alert('Failed to delete photo: ' + error.message);
+                    alert('Failed to delete photo: ' + (error.message || error));
                 } finally {
                     setSaving(false);
                 }
@@ -296,25 +306,41 @@
                 setSaving(true);
 
                 try {
+                    let uploadedPhotoUrl = null;
+
+                    // If user selected a file, upload it first and capture returned URL
                     if (selectedFile && uploadMode === 'upload') {
                         const uploadResult = await apiService.uploadPhoto(person.id, selectedFile);
-                        if (!uploadResult.success) {
-                            throw new Error(uploadResult.error || 'Photo upload failed');
-                        }}
+                        // support flexible response shapes
+                        uploadedPhotoUrl = uploadResult?.data?.photoUrl || uploadResult?.photoUrl || uploadResult?.url || null;
 
-                    const updateData = { ...formData };
-                    if (uploadMode === 'upload') {
-                        delete updateData.photoUrl;
+                        if (!uploadedPhotoUrl && !(uploadResult && uploadResult.success)) {
+                            throw new Error(uploadResult?.error || 'Photo upload failed');
+                        }
+
+                        // normalize preview to full URL
+                        if (uploadedPhotoUrl) {
+                            const preview = uploadedPhotoUrl.startsWith('/uploads/') ? `${API_BASE_URL}${uploadedPhotoUrl}` : uploadedPhotoUrl;
+                            setPreviewUrl(preview);
+                        }
                     }
 
+                    // Build update payload - include photoUrl if available (either typed URL or uploaded)
+                    const updateData = { ...formData };
+                    if (uploadedPhotoUrl) {
+                        updateData.photoUrl = uploadedPhotoUrl;
+                    }
+
+                    // If uploadMode == 'url', formData.photoUrl already contains the typed URL
                     await onSave(person.id, updateData);
                     onClose();
                 } catch (error) {
-                    alert('Failed to save: ' + error.message);
+                    alert('Failed to save: ' + (error.message || error));
                 } finally {
                     setSaving(false);
                 }
             };
+
 
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

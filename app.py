@@ -141,70 +141,64 @@ def serve_photo(filename):
 
 @app.route('/api/persons/<person_id>/upload-photo', methods=['POST'])
 def upload_photo(person_id):
-    """Upload photo for a person"""
+    logger.info('upload_photo called')
     try:
-        # Check if file is in request
         if 'photo' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No photo file provided'
-            }), 400
+            return jsonify({'success': False, 'error': 'No photo file provided'}), 400
 
         file = request.files['photo']
-
-        # Check if filename is empty
         if file.filename == '':
-            return jsonify({
-                'success': False,
-                'error': 'No file selected'
-            }), 400
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
 
-        # Validate file type
         if not allowed_file(file.filename):
-            return jsonify({
-                'success': False,
-                'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'
-            }), 400
+            return jsonify({'success': False, 'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
 
-        # Verify person exists
+        # ✅ Step 1: Verify person exists first
+        def check_person(tx, pid):
+            result = tx.run("MATCH (p:Person) WHERE ID(p) = $id RETURN p", id=pid)
+            return result.single()
+
         with driver.session() as session:
-            result = session.run("""
-                MATCH (p:Person)
-                WHERE ID(p) = $id
-                RETURN p
-            """, id=int(person_id))
+            record = session.execute_read(check_person, int(person_id))
+            if not record:
+                return jsonify({'success': False, 'error': 'Person not found'}), 404
 
-            if not result.single():
-                return jsonify({
-                    'success': False,
-                    'error': 'Person not found'
-                }), 404
-
-        # Delete old photo if exists
+        # ✅ Step 2: Delete old photo
         delete_old_photo(person_id)
 
-        # Generate unique filename
+        # ✅ Step 3: Save new file to disk
         filename = generate_unique_filename(person_id, file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-        # Save file
         file.save(filepath)
         logger.info(f"Photo saved: {filename}")
 
-        # Generate photo URL
         photo_url = f"/uploads/photos/{filename}"
+        logger.info(f"photo_url: {photo_url}")
 
-        # Update person in database
-        with driver.session() as session:
-            result = session.run("""
+        # ✅ Step 4: Update DB with explicit write transaction — guaranteed commit or rollback
+        def update_photo_url(tx, pid, url):
+            result = tx.run("""
                 MATCH (p:Person)
                 WHERE ID(p) = $id
                 SET p.photoUrl = $photoUrl
                 RETURN p
-            """, id=int(person_id), photoUrl=photo_url)
-
+            """, id=pid, photoUrl=url)
             record = result.single()
-            person = format_person(record['p'])
+            if not record:
+                raise ValueError("Person not found during update")
+            return record['p']
+
+        with driver.session() as session:
+            try:
+                node = session.execute_write(update_photo_url, int(person_id), photo_url)
+                person = format_person(node)
+                logger.info(f"Person saved: {person}")
+            except Exception as db_err:
+                # ✅ DB failed — clean up the file we just saved to avoid orphan
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    logger.warning(f"Rolled back file save due to DB error: {filename}")
+                raise db_err
 
         return jsonify({
             'success': True,
@@ -215,10 +209,7 @@ def upload_photo(person_id):
 
     except Exception as e:
         logger.error(f"Error uploading photo: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/persons/<person_id>/delete-photo', methods=['DELETE'])
@@ -369,10 +360,12 @@ def create_person():
 @app.route('/api/persons/<person_id>', methods=['PUT'])
 def update_person(person_id):
     """Update an existing person"""
+    logger.info('update_person called')
     try:
         data = request.get_json()
         
         with driver.session() as session:
+            logger.info(f'Running update query for person_id: {person_id} with data: {data}', )
             result = session.run("""
                 MATCH (p:Person)
                 WHERE ID(p) = $id
@@ -557,6 +550,8 @@ def create_relationship():
             )
             
             record = result.single()
+
+            logger.info(f"create_relationship result: {record}")
             
             if not record:
                 return jsonify({
