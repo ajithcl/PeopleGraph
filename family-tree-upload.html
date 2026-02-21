@@ -1156,6 +1156,31 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
                 .x(d => d.x)
                 .y(d => d.y));
 
+        // Add relationship type labels on links
+        g.selectAll('.link-label')
+            .data(treeData.links())
+            .enter()
+            .append('text')
+            .attr('class', 'link-label')
+            .attr('x', d => (d.source.x + d.target.x) / 2)
+            .attr('y', d => (d.source.y + d.target.y) / 2)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '10px')
+            .attr('fill', '#64748b')
+            .attr('font-weight', '500')
+            .attr('dy', '-5px')
+            .text(d => {
+                // Find the relationship type from the relationships data
+                const sourceId = d.source.data.id;
+                const targetId = d.target.data.id;
+                const relationship = data.relationships.find(r => 
+                    (r.from === sourceId && r.to === targetId) || 
+                    (r.from === targetId && r.to === sourceId)
+                );
+                return relationship ? relationship.type.replace(/_/g, ' ') : '';
+            })
+            .style('pointer-events', 'none');
+
         // Draw nodes
         const nodes = g.selectAll('.tree-node')
             .data(treeData.descendants())
@@ -1463,7 +1488,7 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
                                 <div>
                                     <h1 className="text-3xl md:text-4xl font-bold text-slate-800 flex items-center">
                                         <i className="fas fa-sitemap mr-3 text-indigo-600"></i>
-                                        FamilyGraph Explorer
+                                        Relation Explorer
                                     </h1>
                                     <p className="text-slate-500 mt-1 font-medium">{persons.length} family member{persons.length !== 1 ? 's' : ''} connected</p>
                                 </div>
