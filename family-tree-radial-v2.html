@@ -1087,7 +1087,7 @@ function getRelColor(type) {
 }
 
 // Family Tree Visualization Component — Radial / Spoke Layout
-function FamilyTree({ data, onNodeClick, highlightPath }) {
+function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
     const svgRef = useRef();
 
     useEffect(() => {
@@ -1122,8 +1122,10 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
         const shadowFilter = defs.append('filter').attr('id', 'node-shadow').attr('x', '-30%').attr('y', '-30%').attr('width', '160%').attr('height', '160%');
         shadowFilter.append('feDropShadow').attr('dx', 0).attr('dy', 3).attr('stdDeviation', 5).attr('flood-color', 'rgba(0,0,0,0.12)');
 
-        // ── find root node ───────────────────────────────────────────────
-        const rootNode = data.nodes.find(n => n.id === '0') || data.nodes[0];
+        // ── find root node (driven by rootPersonId prop) ─────────────────
+        const rootNode = (rootPersonId && data.nodes.find(n => n.id === rootPersonId))
+            || data.nodes.find(n => n.id === '0')
+            || data.nodes[0];
 
         // ── find all direct connections ──────────────────────────────────
         const connectedRels = data.relationships
@@ -1396,7 +1398,7 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
                 .text(type.replace(/_/g, ' '));
         });
 
-    }, [data, highlightPath]);
+    }, [data, highlightPath, rootPersonId]);
 
     function getInitials(name) {
         return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -1421,6 +1423,128 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
     );
 }
 
+
+        // Root Person Selector Component
+        function RootPersonSelector({ persons, rootPersonId, onSelect }) {
+            const [query, setQuery] = useState('');
+            const [open, setOpen] = useState(false);
+            const inputRef = useRef();
+
+            const rootPerson = persons.find(p => p.id === rootPersonId);
+
+            const filtered = query.trim().length === 0
+                ? persons
+                : persons.filter(p =>
+                    p.name.toLowerCase().includes(query.toLowerCase()) ||
+                    (p.nickName && p.nickName.toLowerCase().includes(query.toLowerCase()))
+                  );
+
+            const handleSelect = (person) => {
+                onSelect(person.id);
+                setQuery(person.name);
+                setOpen(false);
+            };
+
+            const handleInputChange = (e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+            };
+
+            const handleFocus = () => {
+                setQuery('');
+                setOpen(true);
+            };
+
+            const handleBlur = () => {
+                // Delay so click on dropdown item registers first
+                setTimeout(() => setOpen(false), 150);
+            };
+
+            return (
+                <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-5 mb-6">
+                    <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                            <i className="fas fa-sitemap text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-slate-800 leading-tight">Root Person</h3>
+                            <p className="text-xs text-slate-400">Choose who appears at the center of the radial tree</p>
+                        </div>
+                        {rootPerson && (
+                            <div className="ml-auto flex items-center space-x-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5">
+                                <span className="text-xs font-semibold text-indigo-700">
+                                    <i className="fas fa-star mr-1 text-amber-400"></i>
+                                    {rootPerson.name}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                            <i className="fas fa-search text-slate-400 text-sm"></i>
+                        </div>
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={query}
+                            onChange={handleInputChange}
+                            onFocus={handleFocus}
+                            onBlur={handleBlur}
+                            placeholder="Search by name or nickname…"
+                            className="w-full pl-9 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+                        />
+                        {query && (
+                            <button
+                                onMouseDown={() => { setQuery(''); setOpen(false); }}
+                                className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600">
+                                <i className="fas fa-times text-xs"></i>
+                            </button>
+                        )}
+
+                        {open && filtered.length > 0 && (
+                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                                 style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                                {filtered.map(person => (
+                                    <div
+                                        key={person.id}
+                                        onMouseDown={() => handleSelect(person)}
+                                        className={`flex items-center space-x-3 px-4 py-2.5 cursor-pointer transition
+                                            ${person.id === rootPersonId
+                                                ? 'bg-indigo-50 border-l-4 border-indigo-500'
+                                                : 'hover:bg-slate-50 border-l-4 border-transparent'}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                                            ${person.gender === 'male' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                            {person.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-slate-800 truncate">{person.name}</p>
+                                            {person.nickName && (
+                                                <p className="text-xs text-slate-400 truncate">"{person.nickName}"</p>
+                                            )}
+                                        </div>
+                                        {person.dateOfBirth && (
+                                            <span className="ml-auto text-xs text-slate-400 flex-shrink-0">
+                                                {new Date(person.dateOfBirth).getFullYear()}
+                                            </span>
+                                        )}
+                                        {person.id === rootPersonId && (
+                                            <i className="fas fa-check-circle text-indigo-500 text-sm flex-shrink-0"></i>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {open && filtered.length === 0 && query.trim() && (
+                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl p-4 text-center text-sm text-slate-400">
+                                No members found for "{query}"
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
 
         // Path Finder Component
         function PathFinder({ persons, onFindPath }) {
@@ -1489,6 +1613,7 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
             const [loading, setLoading] = useState(true);
             const [stats, setStats] = useState({});
             const [error, setError] = useState(null);
+            const [rootPersonId, setRootPersonId] = useState(null);
 
             useEffect(() => {
                 loadData();
@@ -1506,6 +1631,8 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
                     setPersons(personsData);
                     setRelationships(relationshipsData);
                     setStats(statsData);
+                    // Default root to node '0' or first person on initial load
+                    setRootPersonId(prev => prev || (personsData.find(n => n.id === '0') || personsData[0])?.id || null);
                 } catch (error) {
                     console.error('Error loading data:', error);
                     setError('Failed to connect to the server. Please ensure the backend is running on http://localhost:8010');
@@ -1705,11 +1832,19 @@ function FamilyTree({ data, onNodeClick, highlightPath }) {
                                 </div>
                             </div>
                         ) : (
-                            <FamilyTree
-                                data={{ nodes: persons, relationships }}
-                                onNodeClick={handleNodeClick}
-                                highlightPath={highlightPath}
-                            />
+                            <>
+                                <RootPersonSelector
+                                    persons={persons}
+                                    rootPersonId={rootPersonId}
+                                    onSelect={setRootPersonId}
+                                />
+                                <FamilyTree
+                                    data={{ nodes: persons, relationships }}
+                                    onNodeClick={handleNodeClick}
+                                    highlightPath={highlightPath}
+                                    rootPersonId={rootPersonId}
+                                />
+                            </>
                         )}
                     </div>
 
