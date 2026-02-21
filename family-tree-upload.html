@@ -136,6 +136,16 @@
                 return data;
             }
 
+            async createPerson(personData) {
+                const response = await fetch(`${API_BASE_URL}/api/persons`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(personData)
+                });
+                const data = await response.json();
+                return data;
+            }
+
             async getStats() {
                 const response = await fetch(`${API_BASE_URL}/api/stats`);
                 const data = await response.json();
@@ -190,6 +200,313 @@
             return (
                 <div className={`${sizeClasses[size]} rounded-full ${colorClass} flex items-center justify-center font-bold`}>
                     {initials}
+                </div>
+            );
+        }
+
+        // Add Person Modal (with photo upload)
+        function AddPersonModal({ onClose, onSave }) {
+            const [formData, setFormData] = useState({
+                name: '',
+                nickName: '',
+                gender: 'male',
+                dateOfBirth: '',
+                photoUrl: ''
+            });
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [previewUrl, setPreviewUrl] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const [uploadMode, setUploadMode] = useState('upload');
+            const [dragOver, setDragOver] = useState(false);
+            const fileInputRef = useRef(null);
+
+            const handleChange = (e) => {
+                setFormData({
+                    ...formData,
+                    [e.target.name]: e.target.value
+                });
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                handleFile(file);
+            };
+
+            const handleFile = (file) => {
+                if (file) {
+                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        alert('Please select a valid image file (JPG, PNG, GIF, or WebP)');
+                        return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert('File size must be less than 5MB');
+                        return;
+                    }
+                    setSelectedFile(file);
+                    const reader = new FileReader();
+                    reader.onloadend = () => setPreviewUrl(reader.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setDragOver(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                handleFile(file);
+            };
+
+            const clearPhoto = () => {
+                setSelectedFile(null);
+                setPreviewUrl(null);
+                setFormData({ ...formData, photoUrl: '' });
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                try {
+                    await onSave(formData, selectedFile);
+                    onClose();
+                } catch (error) {
+                    alert('Failed to add member: ' + (error.message || error));
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6 border-b">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-2xl font-bold text-gray-800">
+                                    <i className="fas fa-user-plus mr-2 text-indigo-600"></i>
+                                    Add Family Member
+                                </h2>
+                                <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Full Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="John Doe"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Nickname
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="nickName"
+                                        value={formData.nickName}
+                                        onChange={handleChange}
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Johnny"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Gender *
+                                        </label>
+                                        <select
+                                            name="gender"
+                                            value={formData.gender}
+                                            onChange={handleChange}
+                                            required
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Date of Birth
+                                        </label>
+                                        <input
+                                            type="date"
+                                            name="dateOfBirth"
+                                            value={formData.dateOfBirth}
+                                            onChange={handleChange}
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="border-t pt-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                                        <i className="fas fa-camera mr-2"></i>
+                                        Profile Photo (optional)
+                                    </label>
+
+                                    <div className="flex space-x-2 mb-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setUploadMode('upload'); clearPhoto(); }}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'upload'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-upload mr-2"></i>
+                                            Upload File
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setUploadMode('url'); setSelectedFile(null); setPreviewUrl(null); }}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'url'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-link mr-2"></i>
+                                            Photo URL
+                                        </button>
+                                    </div>
+
+                                    {uploadMode === 'upload' ? (
+                                        <div>
+                                            <div
+                                                className={`upload-zone rounded-lg p-8 text-center cursor-pointer ${
+                                                    dragOver ? 'drag-over' : ''
+                                                }`}
+                                                onClick={() => fileInputRef.current.click()}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}>
+                                                <i className="fas fa-cloud-upload-alt text-5xl text-gray-400 mb-3"></i>
+                                                <p className="text-gray-600 font-semibold mb-1">
+                                                    Click to upload or drag and drop
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    PNG, JPG, GIF or WebP (max 5MB)
+                                                </p>
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleFileSelect}
+                                                    className="hidden"
+                                                />
+                                            </div>
+
+                                            {selectedFile && (
+                                                <div className="mt-3 p-3 bg-green-50 rounded-lg flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2">
+                                                        <i className="fas fa-file-image text-green-600"></i>
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {selectedFile.name}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            ({(selectedFile.size / 1024).toFixed(1)} KB)
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearPhoto}
+                                                        className="text-red-600 hover:text-red-700">
+                                                        <i className="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <input
+                                                type="url"
+                                                name="photoUrl"
+                                                value={formData.photoUrl}
+                                                onChange={handleChange}
+                                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                                placeholder="https://example.com/photo.jpg"
+                                            />
+                                            <p className="text-sm text-gray-500 mt-1">
+                                                Enter a direct link to a photo
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {previewUrl && (
+                                        <div className="mt-4">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                                            <img
+                                                src={previewUrl}
+                                                alt="Preview"
+                                                className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {uploadMode === 'url' && formData.photoUrl && (
+                                        <div className="mt-4">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                                            <img
+                                                src={formData.photoUrl}
+                                                alt="Preview"
+                                                className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex space-x-3 mt-6 pt-6 border-t">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition disabled:bg-gray-400">
+                                    {saving ? (
+                                        <>
+                                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                                            Adding...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="fas fa-plus mr-2"></i>
+                                            Add Member
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             );
         }
@@ -916,6 +1233,7 @@ nodes.append('image')
             const [selectedPerson, setSelectedPerson] = useState(null);
             const [showProfile, setShowProfile] = useState(false);
             const [showEditModal, setShowEditModal] = useState(false);
+            const [showAddModal, setShowAddModal] = useState(false);
             const [highlightPath, setHighlightPath] = useState(null);
             const [pathResult, setPathResult] = useState(null);
             const [loading, setLoading] = useState(true);
@@ -964,6 +1282,21 @@ nodes.append('image')
 
             const handleSave = async (personId, formData) => {
                 await apiService.updatePerson(personId, formData);
+                await loadData();
+            };
+
+            const handleAddPerson = async (formData, selectedFile) => {
+                const result = await apiService.createPerson(formData);
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create person');
+                }
+                const newPersonId = result.data?.id;
+                if (newPersonId && selectedFile) {
+                    const uploadResult = await apiService.uploadPhoto(newPersonId, selectedFile);
+                    if (!uploadResult?.success) {
+                        throw new Error(uploadResult?.error || 'Photo upload failed');
+                    }
+                }
                 await loadData();
             };
 
@@ -1024,7 +1357,9 @@ nodes.append('image')
                                     </h1>
                                     <p className="text-gray-600 mt-2">{persons.length} family members connected</p>
                                 </div>
-                                <button className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                                <button
+                                    onClick={() => setShowAddModal(true)}
+                                    className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
                                     <i className="fas fa-plus mr-2"></i>Add Member
                                 </button>
                             </div>
@@ -1123,7 +1458,16 @@ nodes.append('image')
                             onClose={() => setShowEditModal(false)}
                             onSave={handleSave}
                         />
-                    )}<div className="max-w-7xl mx-auto mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+                    )}
+
+                    {showAddModal && (
+                        <AddPersonModal
+                            onClose={() => setShowAddModal(false)}
+                            onSave={handleAddPerson}
+                        />
+                    )}
+
+                    <div className="max-w-7xl mx-auto mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div className="bg-white rounded-lg shadow-lg p-6 text-center">
                             <i className="fas fa-users text-4xl text-indigo-600 mb-2"></i>
                             <p className="text-3xl font-bold text-gray-800">{stats.totalPersons || 0}</p>
