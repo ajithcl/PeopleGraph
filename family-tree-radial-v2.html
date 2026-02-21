@@ -240,6 +240,16 @@
                 const data = await response.json();
                 return data.data || [];
             }
+
+            async createRelationship(relationshipData) {
+                const response = await fetch(`${API_BASE_URL}/api/relationships`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(relationshipData)
+                });
+                const data = await response.json();
+                return data;
+            }
         }
 
         const apiService = new ApiService();
@@ -1546,6 +1556,230 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             );
         }
 
+        // Add Relationship Modal
+        function AddRelationshipModal({ persons, onClose, onSave }) {
+            const [fromPersonId, setFromPersonId] = useState('');
+            const [relationshipType, setRelationshipType] = useState('HAS_CHILD');
+            const [toPersonId, setToPersonId] = useState('');
+            const [saving, setSaving] = useState(false);
+            const [fromSearchQuery, setFromSearchQuery] = useState('');
+            const [toSearchQuery, setToSearchQuery] = useState('');
+            const [showFromDropdown, setShowFromDropdown] = useState(false);
+            const [showToDropdown, setShowToDropdown] = useState(false);
+
+            // Hardcoded relationship types
+            const relationshipTypes = [
+                { value: 'HAS_CHILD', label: 'Has Child' },
+                { value: 'PARENT_OF', label: 'Parent Of' },
+                { value: 'SPOUSE_OF', label: 'Spouse Of' },
+                { value: 'SIBLING_OF', label: 'Sibling' },
+                { value: 'FRIEND', label: 'Friend' }
+            ];
+
+            const filteredFromPersons = fromSearchQuery.trim() === ''
+                ? persons
+                : persons.filter(p =>
+                    p.name.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
+                    (p.nickName && p.nickName.toLowerCase().includes(fromSearchQuery.toLowerCase()))
+                  );
+
+            const filteredToPersons = toSearchQuery.trim() === ''
+                ? persons.filter(p => p.id !== fromPersonId)
+                : persons.filter(p =>
+                    p.id !== fromPersonId &&
+                    (p.name.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
+                    (p.nickName && p.nickName.toLowerCase().includes(toSearchQuery.toLowerCase())))
+                  );
+
+            const handleSelectFromPerson = (person) => {
+                setFromPersonId(person.id);
+                setFromSearchQuery(person.name);
+                setShowFromDropdown(false);
+            };
+
+            const handleSelectToPerson = (person) => {
+                setToPersonId(person.id);
+                setToSearchQuery(person.name);
+                setShowToDropdown(false);
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!fromPersonId || !relationshipType || !toPersonId) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+
+                setSaving(true);
+                try {
+                    const result = await apiService.createRelationship({
+                        fromId: fromPersonId,
+                        toId: toPersonId,
+                        type: relationshipType
+                    });
+
+                    if (!result.success) {
+                        throw new Error(result.error || 'Failed to create relationship');
+                    }
+
+                    await onSave();
+                    onClose();
+                } catch (error) {
+                    alert('Failed to add relationship: ' + (error.message || error));
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            return (
+                <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6 border-b border-slate-100">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                                        <i className="fas fa-link mr-2 text-green-600"></i>Add Relationship
+                                    </h2>
+                                    <p className="text-slate-500 mt-1">Create a new relationship between two family members</p>
+                                </div>
+                                <button
+                                    onClick={onClose}
+                                    className="text-slate-400 hover:text-slate-600 text-2xl p-1 rounded-lg transition-colors">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6">
+                            <div className="space-y-6">
+                                {/* From Person */}
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">From Person</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={fromSearchQuery}
+                                            onChange={(e) => setFromSearchQuery(e.target.value)}
+                                            onFocus={() => setShowFromDropdown(true)}
+                                            placeholder="Search person..."
+                                            className="w-full p-3 border-2 border-slate-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20 text-slate-800 placeholder-slate-400 transition"
+                                        />
+                                        {fromPersonId && fromSearchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setFromPersonId('');
+                                                    setFromSearchQuery('');
+                                                }}
+                                                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
+                                                <i className="fas fa-times"></i>
+                                            </button>
+                                        )}
+                                        {showFromDropdown && filteredFromPersons.length > 0 && (
+                                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                {filteredFromPersons.map(person => (
+                                                    <div
+                                                        key={person.id}
+                                                        onClick={() => handleSelectFromPerson(person)}
+                                                        className="p-3 hover:bg-green-50 cursor-pointer border-b border-slate-100 last:border-b-0 flex items-center space-x-3">
+                                                        <PhotoAvatar person={person} size="sm" />
+                                                        <div>
+                                                            <p className="font-semibold text-slate-800">{person.name}</p>
+                                                            {person.nickName && <p className="text-xs text-slate-500">"{ person.nickName}"</p>}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Relationship Type */}
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Relationship Type</label>
+                                    <select
+                                        value={relationshipType}
+                                        onChange={(e) => setRelationshipType(e.target.value)}
+                                        className="w-full p-3 border-2 border-slate-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20 text-slate-800 transition">
+                                        {relationshipTypes.map(type => (
+                                            <option key={type.value} value={type.value}>{type.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* To Person */}
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">To Person</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={toSearchQuery}
+                                            onChange={(e) => setToSearchQuery(e.target.value)}
+                                            onFocus={() => setShowToDropdown(true)}
+                                            placeholder="Search person..."
+                                            className="w-full p-3 border-2 border-slate-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20 text-slate-800 placeholder-slate-400 transition"
+                                        />
+                                        {toPersonId && toSearchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setToPersonId('');
+                                                    setToSearchQuery('');
+                                                }}
+                                                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
+                                                <i className="fas fa-times"></i>
+                                            </button>
+                                        )}
+                                        {showToDropdown && filteredToPersons.length > 0 && (
+                                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                {filteredToPersons.map(person => (
+                                                    <div
+                                                        key={person.id}
+                                                        onClick={() => handleSelectToPerson(person)}
+                                                        className="p-3 hover:bg-green-50 cursor-pointer border-b border-slate-100 last:border-b-0 flex items-center space-x-3">
+                                                        <PhotoAvatar person={person} size="sm" />
+                                                        <div>
+                                                            <p className="font-semibold text-slate-800">{person.name}</p>
+                                                            {person.nickName && <p className="text-xs text-slate-500">"{ person.nickName}"</p>}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex space-x-3 mt-8 pt-6 border-t">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    disabled={saving}
+                                    className="flex-1 px-4 py-3 text-slate-700 font-semibold border-2 border-slate-200 rounded-lg hover:bg-slate-50 transition disabled:opacity-50">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving || !fromPersonId || !toPersonId}
+                                    className="flex-1 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center">
+                                    {saving ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="fas fa-save mr-2"></i>Save Relationship
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
         // Path Finder Component
         function PathFinder({ persons, onFindPath }) {
             const [person1, setPerson1] = useState('');
@@ -1614,6 +1848,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             const [stats, setStats] = useState({});
             const [error, setError] = useState(null);
             const [rootPersonId, setRootPersonId] = useState(null);
+            const [showAddRelationshipModal, setShowAddRelationshipModal] = useState(false);
 
             useEffect(() => {
                 loadData();
@@ -1740,7 +1975,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                                     <i className="fas fa-plus mr-2"></i>Add Member
                                 </button>
                                 <button
-                                    onClick={() => {}}
+                                    onClick={() => setShowAddRelationshipModal(true)}
                                     className="btn-primary bg-green-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-green-500/25">
                                     <i className="fas fa-link mr-2"></i>Add Relationship
                                 </button>
@@ -1875,6 +2110,14 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                         <AddPersonModal
                             onClose={() => setShowAddModal(false)}
                             onSave={handleAddPerson}
+                        />
+                    )}
+
+                    {showAddRelationshipModal && (
+                        <AddRelationshipModal
+                            persons={persons}
+                            onClose={() => setShowAddRelationshipModal(false)}
+                            onSave={loadData}
                         />
                     )}
 
