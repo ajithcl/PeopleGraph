@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FamilyGraph Explorer - Photo Upload</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient-start: #4f46e5;
+            --bg-gradient-end: #7c3aed;
+            --surface: #ffffff;
+            --surface-elevated: #f8fafc;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --border: #e2e8f0;
+            --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.25);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(160deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 50%, #6d28d9 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .tree-node {
+            cursor: pointer;
+            transition: transform 0.2s ease, filter 0.2s ease;
+        }
+
+        .tree-node:hover {
+            filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+        }
+
+        .tree-link {
+            fill: none;
+            stroke: #94a3b8;
+            stroke-width: 2px;
+        }
+
+        .path-highlight {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 3px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .photo-avatar {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background-color: #eef2ff;
+        }
+
+        .upload-zone.drag-over {
+            border-color: var(--accent);
+            background-color: #e0e7ff;
+        }
+
+        /* Modal overlay with blur */
+        .modal-overlay {
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            animation: overlayIn 0.2s ease;
+        }
+
+        @keyframes overlayIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            animation: modalIn 0.25s ease;
+        }
+
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: scale(0.96) translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* Focus visible for accessibility */
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
+        }
+
+        .btn-primary {
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .card-hover {
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .card-hover:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Configuration
+        const API_BASE_URL = 'http://localhost:8010';
+
+        // API Service
+        class ApiService {
+            async getAllPersons() {
+                const response = await fetch(`${API_BASE_URL}/api/persons`);
+                const data = await response.json();
+                return data.data || [];
+            }
+
+            async getRelationships() {
+                const response = await fetch(`${API_BASE_URL}/api/relationships`);
+                const data = await response.json();
+                return data.data || [];
+            }
+
+            async findShortestPath(personId1, personId2) {
+                const response = await fetch(`${API_BASE_URL}/api/path/${personId1}/${personId2}`);
+                const data = await response.json();
+                return data.data?.nodeIds || null;
+            }
+
+            async updatePerson(id, personData) {
+                const response = await fetch(`${API_BASE_URL}/api/persons/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(personData)
+                });
+                const data = await response.json();
+                return data;
+            }
+
+            async uploadPhoto(personId, file) {
+                const formData = new FormData();
+                formData.append('photo', file);
+
+                const response = await fetch(`${API_BASE_URL}/api/persons/${personId}/upload-photo`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                return data;
+            }
+
+            async deletePhoto(personId) {
+                const response = await fetch(`${API_BASE_URL}/api/persons/${personId}/delete-photo`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                return data;
+            }
+
+            async createPerson(personData) {
+                const response = await fetch(`${API_BASE_URL}/api/persons`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(personData)
+                });
+                const data = await response.json();
+                return data;
+            }
+
+            async getStats() {
+                const response = await fetch(`${API_BASE_URL}/api/stats`);
+                const data = await response.json();
+                return data.data || {};
+            }
+
+            async searchPersons(query) {
+                const response = await fetch(`${API_BASE_URL}/api/search?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                return data.data || [];
+            }
+        }
+
+        const apiService = new ApiService();
+
+        // Photo Avatar Component
+        function PhotoAvatar({ person, size = 'md' }) {
+            const [imageError, setImageError] = useState(false);
+
+            const sizeClasses = {
+                'sm': 'w-10 h-10 text-sm',
+                'md': 'w-16 h-16 text-2xl',
+                'lg': 'w-24 h-24 text-4xl',
+                'xl': 'w-32 h-32 text-5xl'
+            };
+
+            const colorClass = person.gender === 'male'
+                ? 'bg-blue-200 text-blue-600'
+                : 'bg-pink-200 text-pink-600';
+
+            const initials = person.name.split(' ').map(n => n[0]).join('').toUpperCase();
+
+            // Construct full URL if it's a relative path
+            let photoUrl = person.photoUrl;
+            if (photoUrl && photoUrl.startsWith('/uploads/')) {
+                photoUrl = `${API_BASE_URL}${photoUrl}`;
+            }
+
+            if (photoUrl && !imageError) {
+                return (
+                    <div className={`${sizeClasses[size]} rounded-full overflow-hidden`}>
+                        <img
+                            src={photoUrl}
+                            alt={person.name}
+                            className="photo-avatar"
+                            onError={() => setImageError(true)}
+                        />
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`${sizeClasses[size]} rounded-full ${colorClass} flex items-center justify-center font-bold`}>
+                    {initials}
+                </div>
+            );
+        }
+
+        // Add Person Modal (with photo upload)
+        function AddPersonModal({ onClose, onSave }) {
+            const [formData, setFormData] = useState({
+                name: '',
+                nickName: '',
+                gender: 'male',
+                dateOfBirth: '',
+                photoUrl: ''
+            });
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [previewUrl, setPreviewUrl] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const [uploadMode, setUploadMode] = useState('upload');
+            const [dragOver, setDragOver] = useState(false);
+            const fileInputRef = useRef(null);
+
+            const handleChange = (e) => {
+                setFormData({
+                    ...formData,
+                    [e.target.name]: e.target.value
+                });
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                handleFile(file);
+            };
+
+            const handleFile = (file) => {
+                if (file) {
+                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        alert('Please select a valid image file (JPG, PNG, GIF, or WebP)');
+                        return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert('File size must be less than 5MB');
+                        return;
+                    }
+                    setSelectedFile(file);
+                    const reader = new FileReader();
+                    reader.onloadend = () => setPreviewUrl(reader.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setDragOver(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                handleFile(file);
+            };
+
+            const clearPhoto = () => {
+                setSelectedFile(null);
+                setPreviewUrl(null);
+                setFormData({ ...formData, photoUrl: '' });
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                try {
+                    await onSave(formData, selectedFile);
+                    onClose();
+                } catch (error) {
+                    alert('Failed to add member: ' + (error.message || error));
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            return (
+                <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6 border-b border-slate-100">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-2xl font-bold text-slate-800">
+                                    <i className="fas fa-user-plus mr-2 text-indigo-600"></i>
+                                    Add Family Member
+                                </h2>
+                                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl p-1 rounded-lg transition-colors" aria-label="Close">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Full Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="John Doe"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Nickname
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="nickName"
+                                        value={formData.nickName}
+                                        onChange={handleChange}
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Johnny"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Gender *
+                                        </label>
+                                        <select
+                                            name="gender"
+                                            value={formData.gender}
+                                            onChange={handleChange}
+                                            required
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Date of Birth
+                                        </label>
+                                        <input
+                                            type="date"
+                                            name="dateOfBirth"
+                                            value={formData.dateOfBirth}
+                                            onChange={handleChange}
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="border-t pt-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                                        <i className="fas fa-camera mr-2"></i>
+                                        Profile Photo (optional)
+                                    </label>
+
+                                    <div className="flex space-x-2 mb-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setUploadMode('upload'); clearPhoto(); }}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'upload'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-upload mr-2"></i>
+                                            Upload File
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setUploadMode('url'); setSelectedFile(null); setPreviewUrl(null); }}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'url'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-link mr-2"></i>
+                                            Photo URL
+                                        </button>
+                                    </div>
+
+                                    {uploadMode === 'upload' ? (
+                                        <div>
+                                            <div
+                                                className={`upload-zone rounded-lg p-8 text-center cursor-pointer ${
+                                                    dragOver ? 'drag-over' : ''
+                                                }`}
+                                                onClick={() => fileInputRef.current.click()}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}>
+                                                <i className="fas fa-cloud-upload-alt text-5xl text-gray-400 mb-3"></i>
+                                                <p className="text-gray-600 font-semibold mb-1">
+                                                    Click to upload or drag and drop
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    PNG, JPG, GIF or WebP (max 5MB)
+                                                </p>
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleFileSelect}
+                                                    className="hidden"
+                                                />
+                                            </div>
+
+                                            {selectedFile && (
+                                                <div className="mt-3 p-3 bg-green-50 rounded-lg flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2">
+                                                        <i className="fas fa-file-image text-green-600"></i>
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {selectedFile.name}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            ({(selectedFile.size / 1024).toFixed(1)} KB)
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearPhoto}
+                                                        className="text-red-600 hover:text-red-700">
+                                                        <i className="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <input
+                                                type="url"
+                                                name="photoUrl"
+                                                value={formData.photoUrl}
+                                                onChange={handleChange}
+                                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                                placeholder="https://example.com/photo.jpg"
+                                            />
+                                            <p className="text-sm text-gray-500 mt-1">
+                                                Enter a direct link to a photo
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {previewUrl && (
+                                        <div className="mt-4">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                                            <img
+                                                src={previewUrl}
+                                                alt="Preview"
+                                                className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {uploadMode === 'url' && formData.photoUrl && (
+                                        <div className="mt-4">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                                            <img
+                                                src={formData.photoUrl}
+                                                alt="Preview"
+                                                className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex space-x-3 mt-6 pt-6 border-t">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="btn-primary flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold disabled:bg-slate-400 disabled:cursor-not-allowed">
+                                    {saving ? (
+                                        <>
+                                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                                            Adding...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="fas fa-plus mr-2"></i>
+                                            Add Member
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Edit Person Modal with Photo Upload
+        function EditPersonModal({ person, onClose, onSave }) {
+            const [formData, setFormData] = useState({
+                name: person.name || '',
+                nickName: person.nickName || '',
+                gender: person.gender || 'male',
+                dateOfBirth: person.dateOfBirth || '',
+                photoUrl: person.photoUrl || ''
+            });
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [previewUrl, setPreviewUrl] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const [uploadMode, setUploadMode] = useState('upload');
+            const [dragOver, setDragOver] = useState(false);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                if (person.photoUrl) {
+                    if (person.photoUrl.startsWith('/uploads/')) {
+                        setPreviewUrl(`${API_BASE_URL}${person.photoUrl}`);
+                    } else {
+                        setPreviewUrl(person.photoUrl);
+                    }
+                    setFormData(fd => ({ ...fd, photoUrl: person.photoUrl }));
+                } else {
+                    setPreviewUrl(null);
+                }
+            }, [person.photoUrl]);
+
+            const handleChange = (e) => {
+                setFormData({
+                    ...formData,
+                    [e.target.name]: e.target.value
+                });
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                handleFile(file);
+            };
+
+            const handleFile = (file) => {
+                if (file) {
+                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        alert('Please select a valid image file (JPG, PNG, GIF, or WebP)');
+                        return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert('File size must be less than 5MB');
+                        return;
+                    }
+
+                    setSelectedFile(file);
+
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setPreviewUrl(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                setDragOver(true);
+            };
+
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                handleFile(file);
+            };
+
+            const handleDeletePhoto = async () => {
+                if (!confirm('Are you sure you want to delete this photo?')) {
+                    return;
+                }
+
+                setSaving(true);
+                try {
+                    // Delete on server via dedicated endpoint
+                    await apiService.deletePhoto(person.id);
+
+                    // Persist deletion to person record (ensure parent reloads / data refreshed)
+                    await onSave(person.id, { photoUrl: '' });
+
+                    // Update local modal state
+                    setPreviewUrl(null);
+                    setSelectedFile(null);
+                    setFormData({ ...formData, photoUrl: '' });
+
+                    alert('Photo deleted successfully');
+                } catch (error) {
+                    alert('Failed to delete photo: ' + (error.message || error));
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setSaving(true);
+
+                try {
+                    let uploadedPhotoUrl = null;
+
+                    // If user selected a file, upload it first and capture returned URL
+                    if (selectedFile && uploadMode === 'upload') {
+                        const uploadResult = await apiService.uploadPhoto(person.id, selectedFile);
+                        // support flexible response shapes
+                        uploadedPhotoUrl = uploadResult?.data?.photoUrl || uploadResult?.photoUrl || uploadResult?.url || null;
+
+                        if (!uploadedPhotoUrl && !(uploadResult && uploadResult.success)) {
+                            throw new Error(uploadResult?.error || 'Photo upload failed');
+                        }
+
+                        // normalize preview to full URL
+                        if (uploadedPhotoUrl) {
+                            const preview = uploadedPhotoUrl.startsWith('/uploads/') ? `${API_BASE_URL}${uploadedPhotoUrl}` : uploadedPhotoUrl;
+                            setPreviewUrl(preview);
+                        }
+                    }
+
+                    // Build update payload - include photoUrl if available (either typed URL or uploaded)
+                    const updateData = { ...formData };
+                    if (uploadedPhotoUrl) {
+                        updateData.photoUrl = uploadedPhotoUrl;
+                    }
+
+                    // If uploadMode == 'url', formData.photoUrl already contains the typed URL
+                    await onSave(person.id, updateData);
+                    onClose();
+                } catch (error) {
+                    alert('Failed to save: ' + (error.message || error));
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+
+            return (
+                <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className="p-6 border-b border-slate-100">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-2xl font-bold text-slate-800">
+                                    <i className="fas fa-edit mr-2 text-indigo-600"></i>
+                                    Edit Person
+                                </h2>
+                                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl p-1 rounded-lg transition-colors" aria-label="Close">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Full Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="John Doe"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Nickname
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="nickName"
+                                        value={formData.nickName}
+                                        onChange={handleChange}
+                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Johnny"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Gender *
+                                        </label>
+                                        <select
+                                            name="gender"
+                                            value={formData.gender}
+                                            onChange={handleChange}
+                                            required
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Date of Birth
+                                        </label>
+                                        <input
+                                            type="date"
+                                            name="dateOfBirth"
+                                            value={formData.dateOfBirth}
+                                            onChange={handleChange}
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="border-t pt-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                                        <i className="fas fa-camera mr-2"></i>
+                                        Profile Photo
+                                    </label>
+
+                                    <div className="flex space-x-2 mb-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setUploadMode('upload')}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'upload'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-upload mr-2"></i>
+                                            Upload File
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setUploadMode('url')}
+                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${
+                                                uploadMode === 'url'
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            }`}>
+                                            <i className="fas fa-link mr-2"></i>
+                                            Photo URL
+                                        </button>
+                                    </div>
+
+                                    {uploadMode === 'upload' ? (
+                                        <div>
+                                            <div
+                                                className={`upload-zone rounded-lg p-8 text-center cursor-pointer ${
+                                                    dragOver ? 'drag-over' : ''
+                                                }`}
+                                                onClick={() => fileInputRef.current.click()}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}>
+                                                <i className="fas fa-cloud-upload-alt text-5xl text-gray-400 mb-3"></i>
+                                                <p className="text-gray-600 font-semibold mb-1">
+                                                    Click to upload or drag and drop
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    PNG, JPG, GIF or WebP (max 5MB)
+                                                </p>
+                                                <input
+                                                    ref={fileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleFileSelect}
+                                                    className="hidden"
+                                                />
+                                            </div>
+
+                                            {selectedFile && (
+                                                <div className="mt-3 p-3 bg-green-50 rounded-lg flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2">
+                                                        <i className="fas fa-file-image text-green-600"></i>
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                            {selectedFile.name}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            ({(selectedFile.size / 1024).toFixed(1)} KB)
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedFile(null);
+                                                            setPreviewUrl(person.photoUrl ? `${API_BASE_URL}${person.photoUrl}` : null);
+                                                        }}
+                                                        className="text-red-600 hover:text-red-700">
+                                                        <i className="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <input
+                                                type="url"
+                                                name="photoUrl"
+                                                value={formData.photoUrl}
+                                                onChange={handleChange}
+                                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                                placeholder="https://example.com/photo.jpg"
+                                            />
+                                            <p className="text-sm text-gray-500 mt-1">
+                                                Enter a direct link to a photo
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {previewUrl && (
+                                        <div className="mt-4">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                                            <div className="flex items-center space-x-4">
+                                                <img
+                                                    src={previewUrl}
+                                                    alt="Preview"
+                                                    className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                    }}
+                                                />
+                                                {person.photoUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDeletePhoto}
+                                                        disabled={saving}
+                                                        className="text-red-600 hover:text-red-700 font-semibold">
+                                                        <i className="fas fa-trash mr-2"></i>
+                                                        Delete Photo
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex space-x-3 mt-6 pt-6 border-t">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition disabled:bg-gray-400">
+                                    {saving ? (
+                                        <>
+                                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="fas fa-save mr-2"></i>
+                                            Save Changes
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Person Profile Modal
+        function PersonProfile({ person, onClose, onEdit, relationships, allPersons }) {
+            if (!person) return null;
+
+            const calculateAge = (dob) => {
+                if (!dob) return 'Unknown';
+                const birth = new Date(dob);
+                const today = new Date();
+                const age = today.getFullYear() - birth.getFullYear();
+                return age;
+            };
+
+            const getRelationships = () => {
+                const rels = relationships.filter(r => r.from === person.id || r.to === person.id);
+                return rels.map(r => {
+                    const relatedPersonId = r.from === person.id ? r.to : r.from;
+                    const relatedPerson = allPersons.find(p => p.id === relatedPersonId);
+                    return { type: r.type, person: relatedPerson };
+                });
+            };
+
+            return (
+                <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
+                        <div className={`p-6 ${person.gender === 'male' ? 'bg-blue-50/80' : 'bg-pink-50/80'}`}>
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center space-x-4">
+                                    <PhotoAvatar person={person} size="xl" />
+                                    <div>
+                                        <h2 className="text-3xl font-bold text-slate-800">{person.name}</h2>
+                                        {person.nickName && (
+                                            <p className="text-lg text-slate-600 italic">"{person.nickName}"</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl p-1 rounded-lg transition-colors" aria-label="Close">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">Date of Birth</p>
+                                    <p className="text-lg font-semibold text-gray-800">
+                                        {person.dateOfBirth ? new Date(person.dateOfBirth).toLocaleDateString() : 'Unknown'}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">Age</p>
+                                    <p className="text-lg font-semibold text-gray-800">
+                                        {calculateAge(person.dateOfBirth)} years
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">Gender</p>
+                                    <p className="text-lg font-semibold text-gray-800 capitalize">{person.gender}</p>
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">ID</p>
+                                    <p className="text-lg font-semibold text-gray-800">{person.id}</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center">
+                                    <i className="fas fa-users mr-2 text-indigo-600"></i>
+                                    Relationships
+                                </h3>
+                                <div className="space-y-2">
+                                    {getRelationships().length > 0 ? getRelationships().map((rel, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-indigo-50 p-3 rounded-lg">
+                                            <div className="flex items-center space-x-3">
+                                                <PhotoAvatar person={rel.person} size="sm" />
+                                                <div>
+                                                    <span className="font-semibold text-gray-800">{rel.person?.name}</span>
+                                                    <span className="text-sm text-gray-500 ml-2">({rel.type.replace(/_/g, ' ')})</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <p className="text-gray-500 italic">No relationships found</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex space-x-3 pt-4 border-t">
+                                <button
+                                    onClick={() => onEdit(person)}
+                                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                                    <i className="fas fa-edit mr-2"></i>Edit Profile
+                                </button></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+// Relationship color palette — one color per relationship type
+const REL_COLORS = {
+    'HAS_CHILD':   { stroke: '#6366f1', label: '#6366f1', bg: '#eef2ff' },
+    'SPOUSE_OF':   { stroke: '#ec4899', label: '#ec4899', bg: '#fdf2f8' },
+    'FRIEND':      { stroke: '#10b981', label: '#10b981', bg: '#ecfdf5' },
+    'SIBLING':     { stroke: '#f59e0b', label: '#f59e0b', bg: '#fffbeb' },
+    'PARENT_OF':   { stroke: '#3b82f6', label: '#3b82f6', bg: '#eff6ff' },
+    'DEFAULT':     { stroke: '#94a3b8', label: '#64748b', bg: '#f1f5f9' },
+};
+
+function getRelColor(type) {
+    const key = (type || '').toUpperCase().replace(/ /g, '_');
+    return REL_COLORS[key] || REL_COLORS['DEFAULT'];
+}
+
+// Family Tree Visualization Component — Radial / Spoke Layout
+function FamilyTree({ data, onNodeClick, highlightPath }) {
+    const svgRef = useRef();
+
+    useEffect(() => {
+        if (!data || !data.nodes.length) return;
+
+        const width = 1200;
+        const height = 860;
+        const cx = width / 2;
+        const cy = height / 2;
+        const rootRadius = 48;   // root node is bigger
+        const nodeRadius = 34;
+        const spokeLength = 320; // distance from center to child nodes
+
+        d3.select(svgRef.current).selectAll('*').remove();
+
+        const svg = d3.select(svgRef.current)
+            .attr('width', '100%')
+            .attr('height', height)
+            .attr('viewBox', `0 0 ${width} ${height}`);
+
+        // ── defs: filters & clip paths ──────────────────────────────────
+        const defs = svg.append('defs');
+
+        // Soft glow filter for root node
+        const glowFilter = defs.append('filter').attr('id', 'root-glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+        glowFilter.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'coloredBlur');
+        const feMerge = glowFilter.append('feMerge');
+        feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+        feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+        // Drop shadow for spoke nodes
+        const shadowFilter = defs.append('filter').attr('id', 'node-shadow').attr('x', '-30%').attr('y', '-30%').attr('width', '160%').attr('height', '160%');
+        shadowFilter.append('feDropShadow').attr('dx', 0).attr('dy', 3).attr('stdDeviation', 5).attr('flood-color', 'rgba(0,0,0,0.12)');
+
+        // ── find root node ───────────────────────────────────────────────
+        const rootNode = data.nodes.find(n => n.id === '0') || data.nodes[0];
+
+        // ── find all direct connections ──────────────────────────────────
+        const connectedRels = data.relationships
+            .filter(r => r.from === rootNode.id || r.to === rootNode.id)
+            .slice(0, 24); // cap at 24 spokes for readability
+
+        const connectedNodes = connectedRels.map(r => {
+            const peerId = r.from === rootNode.id ? r.to : r.from;
+            const peer = data.nodes.find(n => n.id === peerId);
+            return { node: peer, rel: r };
+        }).filter(d => d.node);
+
+        // ── compute spoke angles ─────────────────────────────────────────
+        const total = connectedNodes.length;
+        const spokeData = connectedNodes.map((d, i) => {
+            const angle = (2 * Math.PI * i) / total - Math.PI / 2; // start at top
+            return {
+                ...d,
+                angle,
+                x: cx + spokeLength * Math.cos(angle),
+                y: cy + spokeLength * Math.sin(angle),
+            };
+        });
+
+        // ── background subtle ring ───────────────────────────────────────
+        svg.append('circle')
+            .attr('cx', cx).attr('cy', cy)
+            .attr('r', spokeLength)
+            .attr('fill', 'none')
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-width', 1.5)
+            .attr('stroke-dasharray', '6,5')
+            .attr('opacity', 0.7);
+
+        // ── clip paths for all nodes ─────────────────────────────────────
+        // Root clip
+        defs.append('clipPath').attr('id', 'clip-root')
+            .append('circle').attr('r', rootRadius - 2);
+
+        spokeData.forEach(d => {
+            defs.append('clipPath').attr('id', `clip-spoke-${d.node.id}`)
+                .append('circle').attr('r', nodeRadius - 2);
+        });
+
+        // ── helper: get photo href ───────────────────────────────────────
+        function photoHref(person) {
+            if (!person.photoUrl) return getInitialsSVG(person.name, person.gender);
+            let url = person.photoUrl;
+            if (url.startsWith('/uploads/')) url = `${API_BASE_URL}${url}`;
+            return url;
+        }
+
+        // ── draw spokes (lines) ──────────────────────────────────────────
+        const spokeGroup = svg.append('g').attr('class', 'spokes');
+
+        const lines = spokeGroup.selectAll('.spoke-line')
+            .data(spokeData)
+            .enter()
+            .append('line')
+            .attr('class', 'spoke-line')
+            .attr('x1', cx).attr('y1', cy)
+            .attr('x2', cx).attr('y2', cy)   // start collapsed at center
+            .attr('stroke', d => {
+                const isHighlighted = highlightPath && highlightPath.includes(d.node.id);
+                return isHighlighted ? '#fbbf24' : getRelColor(d.rel.type).stroke;
+            })
+            .attr('stroke-width', d => highlightPath && highlightPath.includes(d.node.id) ? 3.5 : 2)
+            .attr('stroke-linecap', 'round')
+            .attr('opacity', 0.75);
+
+        // Animate spokes outward
+        lines.transition()
+            .duration(700)
+            .delay((d, i) => i * 60)
+            .ease(d3.easeCubicOut)
+            .attr('x2', d => d.x)
+            .attr('y2', d => d.y);
+
+        // ── relationship label pills on spokes ───────────────────────────
+        const labelGroup = svg.append('g').attr('class', 'spoke-labels');
+
+        const labelData = spokeData.map(d => {
+            const midX = cx + (d.x - cx) * 0.52;
+            const midY = cy + (d.y - cy) * 0.52;
+            const relType = d.rel.type.replace(/_/g, ' ');
+            return { ...d, midX, midY, relType };
+        });
+
+        // Pill background
+        const pills = labelGroup.selectAll('.label-pill')
+            .data(labelData)
+            .enter()
+            .append('rect')
+            .attr('class', 'label-pill')
+            .attr('x', d => d.midX - 36)
+            .attr('y', d => d.midY - 10)
+            .attr('width', 72)
+            .attr('height', 20)
+            .attr('rx', 10)
+            .attr('fill', d => getRelColor(d.rel.type).bg)
+            .attr('stroke', d => getRelColor(d.rel.type).stroke)
+            .attr('stroke-width', 1)
+            .attr('opacity', 0)
+            .style('pointer-events', 'none');
+
+        // Pill text
+        const pillTexts = labelGroup.selectAll('.label-pill-text')
+            .data(labelData)
+            .enter()
+            .append('text')
+            .attr('class', 'label-pill-text')
+            .attr('x', d => d.midX)
+            .attr('y', d => d.midY + 4)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '9px')
+            .attr('font-weight', '600')
+            .attr('letter-spacing', '0.04em')
+            .attr('fill', d => getRelColor(d.rel.type).label)
+            .attr('opacity', 0)
+            .text(d => d.relType)
+            .style('pointer-events', 'none');
+
+        // Fade labels in after spokes animate
+        pills.transition().delay((d, i) => 400 + i * 60).duration(300).attr('opacity', 1);
+        pillTexts.transition().delay((d, i) => 400 + i * 60).duration(300).attr('opacity', 1);
+
+        // ── draw spoke (child) nodes ─────────────────────────────────────
+        const spokeNodes = svg.selectAll('.spoke-node')
+            .data(spokeData)
+            .enter()
+            .append('g')
+            .attr('class', 'spoke-node')
+            .attr('transform', `translate(${cx},${cy})`)  // start at center
+            .attr('opacity', 0)
+            .style('cursor', 'pointer')
+            .on('click', (event, d) => onNodeClick(d.node));
+
+        // Animate nodes outward
+        spokeNodes.transition()
+            .duration(700)
+            .delay((d, i) => i * 60)
+            .ease(d3.easeCubicOut)
+            .attr('transform', d => `translate(${d.x},${d.y})`)
+            .attr('opacity', 1);
+
+        // Node circle
+        spokeNodes.append('circle')
+            .attr('r', nodeRadius)
+            .attr('fill', d => d.node.gender === 'male' ? '#dbeafe' : '#fce7f3')
+            .attr('stroke', d => {
+                if (highlightPath && highlightPath.includes(d.node.id)) return '#fbbf24';
+                return getRelColor(d.rel.type).stroke;
+            })
+            .attr('stroke-width', d => highlightPath && highlightPath.includes(d.node.id) ? 4 : 2.5)
+            .attr('filter', 'url(#node-shadow)');
+
+        // Node photo/initials image
+        spokeNodes.append('image')
+            .attr('x', -nodeRadius).attr('y', -nodeRadius)
+            .attr('width', nodeRadius * 2).attr('height', nodeRadius * 2)
+            .attr('clip-path', d => `url(#clip-spoke-${d.node.id})`)
+            .attr('href', d => photoHref(d.node))
+            .attr('preserveAspectRatio', 'xMidYMid slice');
+
+        // Name label below node
+        spokeNodes.append('text')
+            .attr('dy', nodeRadius + 16)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '11px')
+            .attr('font-weight', '700')
+            .attr('fill', '#1e293b')
+            .text(d => d.node.name);
+
+        // Year label
+        spokeNodes.append('text')
+            .attr('dy', nodeRadius + 29)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '10px')
+            .attr('fill', '#94a3b8')
+            .text(d => d.node.dateOfBirth ? new Date(d.node.dateOfBirth).getFullYear() : '');
+
+        // Hover pulse ring
+        spokeNodes.append('circle')
+            .attr('r', nodeRadius + 5)
+            .attr('fill', 'none')
+            .attr('stroke', d => getRelColor(d.rel.type).stroke)
+            .attr('stroke-width', 2)
+            .attr('opacity', 0)
+            .attr('class', 'hover-ring');
+
+        spokeNodes
+            .on('mouseenter', function() {
+                d3.select(this).select('.hover-ring')
+                    .transition().duration(150).attr('opacity', 0.5);
+                d3.select(this).select('circle')
+                    .transition().duration(150).attr('r', nodeRadius + 2);
+            })
+            .on('mouseleave', function() {
+                d3.select(this).select('.hover-ring')
+                    .transition().duration(200).attr('opacity', 0);
+                d3.select(this).select('circle')
+                    .transition().duration(150).attr('r', nodeRadius);
+            });
+
+        // ── draw root node (center, on top) ─────────────────────────────
+        const rootGroup = svg.append('g')
+            .attr('class', 'root-node')
+            .attr('transform', `translate(${cx},${cy})`)
+            .attr('opacity', 0)
+            .style('cursor', 'pointer')
+            .on('click', () => onNodeClick(rootNode));
+
+        rootGroup.transition().duration(500).attr('opacity', 1);
+
+        // Outer glow ring
+        rootGroup.append('circle')
+            .attr('r', rootRadius + 10)
+            .attr('fill', 'none')
+            .attr('stroke', '#6366f1')
+            .attr('stroke-width', 2)
+            .attr('opacity', 0.25)
+            .attr('filter', 'url(#root-glow)');
+
+        // Root circle
+        rootGroup.append('circle')
+            .attr('r', rootRadius)
+            .attr('fill', rootNode.gender === 'male' ? '#dbeafe' : '#fce7f3')
+            .attr('stroke', '#6366f1')
+            .attr('stroke-width', 4)
+            .attr('filter', 'url(#root-glow)');
+
+        // Root photo
+        rootGroup.append('image')
+            .attr('x', -rootRadius).attr('y', -rootRadius)
+            .attr('width', rootRadius * 2).attr('height', rootRadius * 2)
+            .attr('clip-path', 'url(#clip-root)')
+            .attr('href', photoHref(rootNode))
+            .attr('preserveAspectRatio', 'xMidYMid slice');
+
+        // Root name
+        rootGroup.append('text')
+            .attr('dy', rootRadius + 18)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '13px')
+            .attr('font-weight', '800')
+            .attr('fill', '#1e293b')
+            .text(rootNode.name);
+
+        // Root year
+        rootGroup.append('text')
+            .attr('dy', rootRadius + 33)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '10px')
+            .attr('fill', '#6366f1')
+            .attr('font-weight', '600')
+            .text(rootNode.dateOfBirth ? new Date(rootNode.dateOfBirth).getFullYear() : '');
+
+        // ── legend ───────────────────────────────────────────────────────
+        const usedTypes = [...new Set(connectedRels.map(r => r.type))];
+        const legend = svg.append('g').attr('transform', 'translate(20, 20)');
+
+        usedTypes.forEach((type, i) => {
+            const col = getRelColor(type);
+            const row = legend.append('g').attr('transform', `translate(0, ${i * 22})`);
+            row.append('rect').attr('width', 14).attr('height', 14).attr('rx', 4)
+                .attr('fill', col.bg).attr('stroke', col.stroke).attr('stroke-width', 1.5);
+            row.append('text').attr('x', 20).attr('y', 11)
+                .attr('font-size', '11px').attr('font-weight', '600')
+                .attr('fill', col.label)
+                .text(type.replace(/_/g, ' '));
+        });
+
+    }, [data, highlightPath]);
+
+    function getInitials(name) {
+        return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    }
+
+    function getInitialsSVG(name, gender) {
+        const initials = getInitials(name);
+        const bgColor = gender === 'male' ? '#dbeafe' : '#fce7f3';
+        const textColor = gender === 'male' ? '#3b82f6' : '#ec4899';
+        const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70">
+            <rect width="70" height="70" fill="${bgColor}"/>
+            <text x="35" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="${textColor}">${initials}</text>
+        </svg>`;
+        return 'data:image/svg+xml;base64,' + btoa(svgStr);
+    }
+
+    return (
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-4 overflow-auto scrollbar-thin"
+             style={{ minHeight: '500px' }}>
+            <svg ref={svgRef}></svg>
+        </div>
+    );
+}
+
+
+        // Path Finder Component
+        function PathFinder({ persons, onFindPath }) {
+            const [person1, setPerson1] = useState('');
+            const [person2, setPerson2] = useState('');
+
+            const handleFind = () => {
+                if (person1 && person2 && person1 !== person2) {
+                    onFindPath(person1, person2);
+                }
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-lg border border-slate-100 p-6">
+                    <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center">
+                        <i className="fas fa-route mr-2 text-emerald-600"></i>
+                        Relationship Path Finder
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">From</label>
+                            <select
+                                value={person1}
+                                onChange={(e) => setPerson1(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                <option value="">Select person...</option>
+                                {persons.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">To</label>
+                            <select
+                                value={person2}
+                                onChange={(e) => setPerson2(e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                <option value="">Select person...</option>
+                                {persons.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleFind}
+                        disabled={!person1 || !person2 || person1 === person2}
+                        className="w-full mt-4 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                        <i className="fas fa-search mr-2"></i>Find Connection Path
+                    </button>
+                </div>
+            );
+        }
+
+        // Main App Component
+        function App() {
+            const [persons, setPersons] = useState([]);
+            const [relationships, setRelationships] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedPerson, setSelectedPerson] = useState(null);
+            const [showProfile, setShowProfile] = useState(false);
+            const [showEditModal, setShowEditModal] = useState(false);
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [highlightPath, setHighlightPath] = useState(null);
+            const [pathResult, setPathResult] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [stats, setStats] = useState({});
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            async function loadData() {
+                setLoading(true);
+                setError(null);
+                try {
+                    const [personsData, relationshipsData, statsData] = await Promise.all([
+                        apiService.getAllPersons(),
+                        apiService.getRelationships(),
+                        apiService.getStats()
+                    ]);
+                    setPersons(personsData);
+                    setRelationships(relationshipsData);
+                    setStats(statsData);
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    setError('Failed to connect to the server. Please ensure the backend is running on http://localhost:8010');
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            const filteredPersons = persons.filter(p =>
+                p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (p.nickName && p.nickName.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+
+            const handleNodeClick = (node) => {
+                setSelectedPerson(node);
+                setShowProfile(true);
+            };
+
+            const handleEdit = (person) => {
+                setShowProfile(false);
+                setSelectedPerson(person);
+                setShowEditModal(true);
+            };
+
+            const handleSave = async (personId, formData) => {
+                await apiService.updatePerson(personId, formData);
+                await loadData();
+            };
+
+            const handleAddPerson = async (formData, selectedFile) => {
+                const result = await apiService.createPerson(formData);
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create person');
+                }
+                const newPersonId = result.data?.id;
+                if (newPersonId && selectedFile) {
+                    const uploadResult = await apiService.uploadPhoto(newPersonId, selectedFile);
+                    if (!uploadResult?.success) {
+                        throw new Error(uploadResult?.error || 'Photo upload failed');
+                    }
+                }
+                await loadData();
+            };
+
+            const handleFindPath = async (personId1, personId2) => {
+                try {
+                    const path = await apiService.findShortestPath(personId1, personId2);
+                    setHighlightPath(path);
+
+                    if (path) {
+                        const pathPersons = path.map(id => persons.find(p => p.id === id));
+                        setPathResult(pathPersons);
+                    } else {
+                        setPathResult([]);
+                    }
+                } catch (error) {
+                    console.error('Error finding path:', error);
+                    alert('Failed to find path');
+                }
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-white mx-auto mb-4"></div>
+                            <p className="text-white text-xl font-semibold">Loading Family Tree...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-6">
+                        <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8 max-w-md text-center">
+                            <i className="fas fa-exclamation-triangle text-6xl text-red-500 mb-4"></i>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-4">Connection Error</h2>
+                            <p className="text-slate-600 mb-6">{error}</p>
+                            <button
+                                onClick={loadData}
+                                className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
+                                <i className="fas fa-redo mr-2"></i>Retry Connection
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen p-6">
+                    <div className="max-w-7xl mx-auto mb-6">
+                        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6 md:p-8">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                                <div>
+                                    <h1 className="text-3xl md:text-4xl font-bold text-slate-800 flex items-center">
+                                        <i className="fas fa-sitemap mr-3 text-indigo-600"></i>
+                                        Relation Explorer
+                                    </h1>
+                                    <p className="text-slate-500 mt-1 font-medium">{persons.length} family member{persons.length !== 1 ? 's' : ''} connected</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowAddModal(true)}
+                                    className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/25">
+                                    <i className="fas fa-plus mr-2"></i>Add Member
+                                </button>
+                            </div>
+
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Search by name or nickname..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full p-4 pl-12 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-800 placeholder-slate-400 transition"
+                                />
+                                <i className="fas fa-search absolute left-4 top-5 text-slate-400 text-xl"></i>
+                            </div>
+
+                            {searchTerm && (
+                                <div className="mt-4 max-h-60 overflow-y-auto scrollbar-thin bg-slate-50 rounded-xl border border-slate-100 p-2">
+                                    {filteredPersons.length === 0 ? (
+                                        <p className="p-4 text-center text-slate-500">No matches for "{searchTerm}"</p>
+                                    ) : (
+                                        filteredPersons.map(person => (
+                                            <div
+                                                key={person.id}
+                                                onClick={() => handleNodeClick(person)}
+                                                className="p-3 hover:bg-white cursor-pointer rounded-lg transition flex items-center justify-between">
+                                                <div className="flex items-center space-x-3">
+                                                    <PhotoAvatar person={person} size="sm" />
+                                                    <div>
+                                                        <p className="font-semibold text-slate-800">{person.name}</p>
+                                                        {person.nickName && <p className="text-sm text-slate-500">"{person.nickName}"</p>}
+                                                    </div>
+                                                </div>
+                                                <span className="text-sm text-slate-500">
+                                                    {person.dateOfBirth ? new Date(person.dateOfBirth).getFullYear() : ''}
+                                                </span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto mb-6">
+                        <PathFinder persons={persons} onFindPath={handleFindPath} />
+
+                        {pathResult && (
+                            <div className="mt-4 bg-white rounded-xl shadow-lg border border-slate-100 p-6">
+                                {pathResult.length > 0 ? (
+                                    <div>
+                                        <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                                            <i className="fas fa-check-circle mr-2 text-green-600"></i>
+                                            Connection Found ({pathResult.length} steps)
+                                        </h4>
+                                        <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+                                            {pathResult.map((person, idx) => (
+                                                <React.Fragment key={person.id}>
+                                                    <div className="flex-shrink-0 text-center">
+                                                        <PhotoAvatar person={person} size="md" />
+                                                        <p className="text-sm font-semibold text-gray-800 max-w-[100px] truncate mt-2">{person.name}</p>
+                                                    </div>
+                                                    {idx < pathResult.length - 1 && (
+                                                        <i className="fas fa-arrow-right text-2xl text-gray-400 flex-shrink-0"></i>
+                                                    )}
+                                                </React.Fragment>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : pathResult.length === 0 && (
+                                    <div className="text-center text-gray-600">
+                                        <i className="fas fa-times-circle text-4xl text-red-500 mb-2"></i>
+                                        <p className="font-semibold">No connection found between selected persons</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="max-w-7xl mx-auto mb-6">
+                        {persons.length === 0 ? (
+                            <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-12 md:p-16 text-center">
+                                <div className="max-w-md mx-auto">
+                                    <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-6">
+                                        <i className="fas fa-users text-4xl text-indigo-600"></i>
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-800 mb-2">No family members yet</h3>
+                                    <p className="text-slate-500 mb-6">Add your first family member to start building your tree. You can add photos and relationships later.</p>
+                                    <button
+                                        onClick={() => setShowAddModal(true)}
+                                        className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
+                                        <i className="fas fa-plus mr-2"></i>Add First Member
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <FamilyTree
+                                data={{ nodes: persons, relationships }}
+                                onNodeClick={handleNodeClick}
+                                highlightPath={highlightPath}
+                            />
+                        )}
+                    </div>
+
+                    {showProfile && (
+                        <PersonProfile
+                            person={selectedPerson}
+                            onClose={() => setShowProfile(false)}
+                            onEdit={handleEdit}
+                            relationships={relationships}
+                            allPersons={persons}
+                        />
+                    )}
+
+                    {showEditModal && (
+                        <EditPersonModal
+                            person={selectedPerson}
+                            onClose={() => setShowEditModal(false)}
+                            onSave={handleSave}
+                        />
+                    )}
+
+                    {showAddModal && (
+                        <AddPersonModal
+                            onClose={() => setShowAddModal(false)}
+                            onSave={handleAddPerson}
+                        />
+                    )}
+
+                    <div className="max-w-7xl mx-auto mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-6 text-center">
+                            <i className="fas fa-users text-4xl text-indigo-600 mb-2"></i>
+                            <p className="text-3xl font-bold text-slate-800">{stats.totalPersons || 0}</p>
+                            <p className="text-slate-500 text-sm font-medium">Total Members</p>
+                        </div>
+                        <div className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-6 text-center">
+                            <i className="fas fa-mars text-4xl text-blue-500 mb-2"></i>
+                            <p className="text-3xl font-bold text-slate-800">{stats.maleCount || 0}</p>
+                            <p className="text-slate-500 text-sm font-medium">Male Members</p>
+                        </div>
+                        <div className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-6 text-center">
+                            <i className="fas fa-venus text-4xl text-pink-500 mb-2"></i>
+                            <p className="text-3xl font-bold text-slate-800">{stats.femaleCount || 0}</p>
+                            <p className="text-slate-500 text-sm font-medium">Female Members</p>
+                        </div>
+                        <div className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-6 text-center">
+                            <i className="fas fa-link text-4xl text-emerald-500 mb-2"></i>
+                            <p className="text-3xl font-bold text-slate-800">{stats.totalRelationships || 0}</p>
+                            <p className="text-slate-500 text-sm font-medium">Relationships</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
