@@ -526,9 +526,9 @@ def create_relationship():
             }), 400
         
         # Validate relationship type
-        valid_types = ['spouse_of', 'has_child', 'child_of', 'sibling_of', 'parent_of']
+        valid_types = ['SPOUSE_OF', 'HAS_CHILD', 'CHILD_OF', 'SIBLING_OF', 'PARENT_OF']
         rel_type = data['type']
-        
+        logger.info(f"Attempting to create relationship of type: {rel_type}")
         if rel_type not in valid_types:
             return jsonify({
                 'success': False,
