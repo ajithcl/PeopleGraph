@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FamilyGraph Explorer - Photo Upload</title>
+    <title>PeopleGraph — Private Kinship Graphs</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -165,94 +165,779 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // Configuration
-        const API_BASE_URL = 'http://localhost:8010';
+        // Same-origin when served by Flask; override with window.PEOPLEGRAPH_API if needed
+        const API_BASE_URL = window.PEOPLEGRAPH_API || (window.location.port === '8010' || window.location.port === ''
+            ? ''
+            : 'http://localhost:8010');
 
-        // API Service
+        const AUTH_STORAGE_KEY = 'peoplegraph_session';
+
+        function loadSession() {
+            try {
+                const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function saveSession(session) {
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+        }
+
+        function clearSession() {
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+        }
+
+        // API Service — Phase 1 space-scoped + Bearer auth
         class ApiService {
+            constructor() {
+                this.token = null;
+                this.spaceId = null;
+            }
+
+            setAuth(token, spaceId) {
+                this.token = token;
+                this.spaceId = spaceId;
+            }
+
+            authHeaders(json = true) {
+                const headers = {};
+                if (json) headers['Content-Type'] = 'application/json';
+                if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+                return headers;
+            }
+
+            spacePath(suffix = '') {
+                if (!this.spaceId) throw new Error('No kinship space selected');
+                return `${API_BASE_URL}/api/spaces/${this.spaceId}${suffix}`;
+            }
+
+            async request(url, options = {}) {
+                const response = await fetch(url, options);
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 401) {
+                    const err = new Error(data.error || 'Unauthorized');
+                    err.status = 401;
+                    throw err;
+                }
+                return data;
+            }
+
+            async bootstrap(payload) {
+                return this.request(`${API_BASE_URL}/api/auth/bootstrap`, {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            async register(payload) {
+                return this.request(`${API_BASE_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            async login(email, password) {
+                return this.request(`${API_BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify({ email, password }),
+                });
+            }
+
+            async me(spaceId = null) {
+                const q = spaceId ? `?spaceId=${encodeURIComponent(spaceId)}` : '';
+                return this.request(`${API_BASE_URL}/api/auth/me${q}`, {
+                    headers: this.authHeaders(false),
+                });
+            }
+
+            async getClaimablePersons(query = '') {
+                const q = query ? `?query=${encodeURIComponent(query)}` : '';
+                return this.request(this.spacePath(`/profile/claimable${q}`), {
+                    headers: this.authHeaders(false),
+                });
+            }
+
+            async claimPerson(personId) {
+                return this.request(this.spacePath('/profile/claim'), {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify({ personId }),
+                });
+            }
+
+            async claimNewPerson(payload) {
+                return this.request(this.spacePath('/profile/claim/new'), {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            async getMyProfile() {
+                return this.request(this.spacePath('/profile/me'), {
+                    headers: this.authHeaders(false),
+                });
+            }
+
+            async previewInvite(token) {
+                return this.request(`${API_BASE_URL}/api/invites/${encodeURIComponent(token)}`);
+            }
+
+            async createInvite(role = 'viewer', email = null) {
+                return this.request(this.spacePath('/invites'), {
+                    method: 'POST',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify({ role, email: email || null }),
+                });
+            }
+
+            async listInvites() {
+                const data = await this.request(this.spacePath('/invites'), {
+                    headers: this.authHeaders(false),
+                });
+                return data.data || [];
+            }
+
             async getAllPersons() {
-                const response = await fetch(`${API_BASE_URL}/api/persons`);
-                const data = await response.json();
+                const data = await this.request(this.spacePath('/persons'), {
+                    headers: this.authHeaders(false),
+                });
                 return data.data || [];
             }
 
             async getRelationships() {
-                const response = await fetch(`${API_BASE_URL}/api/relationships`);
-                const data = await response.json();
+                const data = await this.request(this.spacePath('/relationships'), {
+                    headers: this.authHeaders(false),
+                });
                 return data.data || [];
             }
 
             async findShortestPath(personId1, personId2) {
-                const response = await fetch(`${API_BASE_URL}/api/path/${personId1}/${personId2}`);
-                const data = await response.json();
-                return data.data?.nodeIds || null;
+                const data = await this.request(
+                    this.spacePath(`/path/${personId1}/${personId2}`),
+                    { headers: this.authHeaders(false) }
+                );
+                return data.data || null;
+            }
+
+            async deleteRelationship(relationshipData) {
+                return this.request(this.spacePath('/relationships'), {
+                    method: 'DELETE',
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(relationshipData),
+                });
             }
 
             async updatePerson(id, personData) {
-                const response = await fetch(`${API_BASE_URL}/api/persons/${id}`, {
+                return this.request(this.spacePath(`/persons/${id}`), {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(personData)
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(personData),
                 });
-                const data = await response.json();
-                return data;
             }
 
             async uploadPhoto(personId, file) {
                 const formData = new FormData();
                 formData.append('photo', file);
-
-                const response = await fetch(`${API_BASE_URL}/api/persons/${personId}/upload-photo`, {
+                const response = await fetch(this.spacePath(`/persons/${personId}/upload-photo`), {
                     method: 'POST',
-                    body: formData
+                    headers: { Authorization: `Bearer ${this.token}` },
+                    body: formData,
                 });
-
-                const data = await response.json();
-                return data;
+                return response.json();
             }
 
             async deletePhoto(personId) {
-                const response = await fetch(`${API_BASE_URL}/api/persons/${personId}/delete-photo`, {
-                    method: 'DELETE'
+                return this.request(this.spacePath(`/persons/${personId}/delete-photo`), {
+                    method: 'DELETE',
+                    headers: this.authHeaders(false),
                 });
-                const data = await response.json();
-                return data;
             }
 
             async createPerson(personData) {
-                const response = await fetch(`${API_BASE_URL}/api/persons`, {
+                return this.request(this.spacePath('/persons'), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(personData)
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(personData),
                 });
-                const data = await response.json();
-                return data;
             }
 
             async getStats() {
-                const response = await fetch(`${API_BASE_URL}/api/stats`);
-                const data = await response.json();
+                const data = await this.request(this.spacePath('/stats'), {
+                    headers: this.authHeaders(false),
+                });
                 return data.data || {};
             }
 
             async searchPersons(query) {
-                const response = await fetch(`${API_BASE_URL}/api/search?query=${encodeURIComponent(query)}`);
-                const data = await response.json();
+                const data = await this.request(
+                    this.spacePath(`/persons/search?query=${encodeURIComponent(query)}`),
+                    { headers: this.authHeaders(false) }
+                );
                 return data.data || [];
             }
 
             async createRelationship(relationshipData) {
-                const response = await fetch(`${API_BASE_URL}/api/relationships`, {
+                return this.request(this.spacePath('/relationships'), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(relationshipData)
+                    headers: this.authHeaders(),
+                    body: JSON.stringify(relationshipData),
                 });
-                const data = await response.json();
-                return data;
             }
         }
 
         const apiService = new ApiService();
+
+        function getInviteTokenFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('invite') || '';
+        }
+
+        // Auth screens
+        function AuthShell({ children, title, subtitle }) {
+            return (
+                <div className="min-h-screen flex items-center justify-center p-6">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md p-8">
+                        <div className="text-center mb-8">
+                            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto mb-4">
+                                <i className="fas fa-sitemap text-2xl"></i>
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
+                            {subtitle && <p className="text-slate-500 mt-2 text-sm">{subtitle}</p>}
+                        </div>
+                        {children}
+                    </div>
+                </div>
+            );
+        }
+
+        function LoginForm({ onSuccess, onSwitchRegister, onSwitchBootstrap, canBootstrap }) {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [busy, setBusy] = useState(false);
+
+            const submit = async (e) => {
+                e.preventDefault();
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.login(email, password);
+                    if (!result.success) throw new Error(result.error || 'Login failed');
+                    const me = await (async () => {
+                        apiService.setAuth(result.data.token, null);
+                        return apiService.me();
+                    })();
+                    if (!me.success) throw new Error(me.error || 'Failed to load profile');
+                    const spaces = me.data.spaces || [];
+                    if (!spaces.length) throw new Error('No kinship space found for this account');
+                    const spaceId = spaces[0].id;
+                    const meSpace = await apiService.me(spaceId);
+                    const claim = meSpace.data || me.data;
+                    onSuccess({
+                        token: result.data.token,
+                        user: claim.user || me.data.user,
+                        spaces,
+                        spaceId,
+                        role: spaces[0].role,
+                        personId: claim.personId || null,
+                        personName: claim.personName || null,
+                        needsClaim: !!claim.needsClaim,
+                    });
+                } catch (err) {
+                    setError(err.message || 'Login failed');
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            return (
+                <AuthShell title="Welcome back" subtitle="Sign in to your private kinship graph">
+                    <form onSubmit={submit} className="space-y-4">
+                        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">{error}</div>}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                            <input type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <button type="submit" disabled={busy}
+                            className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold disabled:bg-slate-400">
+                            {busy ? 'Signing in…' : 'Sign in'}
+                        </button>
+                    </form>
+                    <div className="mt-6 text-center text-sm text-slate-500 space-y-2">
+                        <button type="button" onClick={onSwitchRegister} className="text-indigo-600 font-semibold hover:underline block w-full">
+                            Have an invite? Create account
+                        </button>
+                        {canBootstrap && (
+                            <button type="button" onClick={onSwitchBootstrap} className="text-slate-600 hover:underline block w-full">
+                                First time setup (bootstrap owner)
+                            </button>
+                        )}
+                    </div>
+                </AuthShell>
+            );
+        }
+
+        function RegisterForm({ inviteToken: initialToken, onSuccess, onSwitchLogin }) {
+            const [inviteToken, setInviteToken] = useState(initialToken || '');
+            const [preview, setPreview] = useState(null);
+            const [email, setEmail] = useState('');
+            const [name, setName] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [busy, setBusy] = useState(false);
+
+            useEffect(() => {
+                if (!inviteToken) { setPreview(null); return; }
+                apiService.previewInvite(inviteToken).then(r => {
+                    if (r.success) {
+                        setPreview(r.data);
+                        if (r.data.email) setEmail(r.data.email);
+                        setError('');
+                    } else {
+                        setPreview(null);
+                        setError(r.error || 'Invalid invite');
+                    }
+                }).catch(() => setError('Could not verify invite'));
+            }, [inviteToken]);
+
+            const submit = async (e) => {
+                e.preventDefault();
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.register({ email, password, name, inviteToken });
+                    if (!result.success) throw new Error(result.error || 'Registration failed');
+                    onSuccess({
+                        token: result.data.token,
+                        user: result.data.user,
+                        spaces: [{ id: result.data.space.id, role: result.data.space.role, name: preview?.spaceName || 'Family' }],
+                        spaceId: result.data.space.id,
+                        role: result.data.space.role,
+                        personId: null,
+                        personName: null,
+                        needsClaim: true,
+                    });
+                    if (window.history.replaceState) {
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
+                } catch (err) {
+                    setError(err.message || 'Registration failed');
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            return (
+                <AuthShell title="Join with invite" subtitle="Registration is invite-only">
+                    <form onSubmit={submit} className="space-y-4">
+                        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">{error}</div>}
+                        {preview && (
+                            <div className="bg-indigo-50 text-indigo-800 text-sm p-3 rounded-lg">
+                                Joining <strong>{preview.spaceName}</strong> as <strong>{preview.role}</strong>
+                            </div>
+                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Invite token</label>
+                            <input required value={inviteToken} onChange={e => setInviteToken(e.target.value.trim())}
+                                className="w-full p-3 border border-slate-200 rounded-xl font-mono text-sm" placeholder="Paste invite token" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Your name</label>
+                            <input required value={name} onChange={e => setName(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Password (min 8)</label>
+                            <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <button type="submit" disabled={busy || !preview}
+                            className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold disabled:bg-slate-400">
+                            {busy ? 'Creating account…' : 'Create account'}
+                        </button>
+                    </form>
+                    <button type="button" onClick={onSwitchLogin} className="mt-6 w-full text-sm text-indigo-600 font-semibold hover:underline">
+                        Already have an account? Sign in
+                    </button>
+                </AuthShell>
+            );
+        }
+
+        function BootstrapForm({ onSuccess, onSwitchLogin }) {
+            const [email, setEmail] = useState('');
+            const [name, setName] = useState('');
+            const [password, setPassword] = useState('');
+            const [spaceName, setSpaceName] = useState('Our Family');
+            const [error, setError] = useState('');
+            const [busy, setBusy] = useState(false);
+
+            const submit = async (e) => {
+                e.preventDefault();
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.bootstrap({ email, password, name, spaceName });
+                    if (!result.success) throw new Error(result.error || 'Bootstrap failed');
+                    onSuccess({
+                        token: result.data.token,
+                        user: result.data.user,
+                        spaces: [{ ...result.data.space, name: result.data.space.name }],
+                        spaceId: result.data.space.id,
+                        role: 'owner',
+                        personId: result.data.personId,
+                        personName: result.data.user?.name || name,
+                        needsClaim: false,
+                    });
+                } catch (err) {
+                    setError(err.message || 'Bootstrap failed');
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            return (
+                <AuthShell title="Create your kinship space" subtitle="First-time setup — you become the owner">
+                    <form onSubmit={submit} className="space-y-4">
+                        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">{error}</div>}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Space name</label>
+                            <input required value={spaceName} onChange={e => setSpaceName(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Your name</label>
+                            <input required value={name} onChange={e => setName(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Password (min 8)</label>
+                            <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl" />
+                        </div>
+                        <button type="submit" disabled={busy}
+                            className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold disabled:bg-slate-400">
+                            {busy ? 'Creating…' : 'Create space & account'}
+                        </button>
+                    </form>
+                    <button type="button" onClick={onSwitchLogin} className="mt-6 w-full text-sm text-indigo-600 font-semibold hover:underline">
+                        Back to sign in
+                    </button>
+                </AuthShell>
+            );
+        }
+
+        function ClaimOnboarding({ session, onClaimed, onLogout }) {
+            const [mode, setMode] = useState('pick'); // pick | create
+            const [query, setQuery] = useState('');
+            const [persons, setPersons] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState('');
+            const [busy, setBusy] = useState(false);
+            const [form, setForm] = useState({
+                name: session.user?.name || '',
+                gender: 'male',
+                nickName: '',
+                dateOfBirth: '',
+            });
+
+            const spaceName = (session.spaces || []).find(s => s.id === session.spaceId)?.name || 'your family';
+
+            const load = async (q = '') => {
+                setLoading(true);
+                setError('');
+                try {
+                    apiService.setAuth(session.token, session.spaceId);
+                    const result = await apiService.getClaimablePersons(q);
+                    if (!result.success) throw new Error(result.error || 'Failed to load people');
+                    setPersons(result.data.persons || []);
+                } catch (err) {
+                    setError(err.message || 'Failed to load');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => { load(''); }, [session.spaceId]);
+
+            useEffect(() => {
+                const t = setTimeout(() => load(query), 250);
+                return () => clearTimeout(t);
+            }, [query]);
+
+            const finish = (person) => {
+                onClaimed({
+                    ...session,
+                    personId: person.id,
+                    personName: person.name,
+                    needsClaim: false,
+                });
+            };
+
+            const claimExisting = async (person) => {
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.claimPerson(person.id);
+                    if (!result.success) throw new Error(result.error || 'Claim failed');
+                    finish(result.data);
+                } catch (err) {
+                    setError(err.message || 'Claim failed');
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            const createAndClaim = async (e) => {
+                e.preventDefault();
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.claimNewPerson(form);
+                    if (!result.success) throw new Error(result.error || 'Could not create profile');
+                    finish(result.data);
+                } catch (err) {
+                    setError(err.message || 'Could not create profile');
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-6">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg p-8">
+                        <div className="text-center mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto mb-4">
+                                <i className="fas fa-id-card text-2xl"></i>
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-800">Who are you on the graph?</h1>
+                            <p className="text-slate-500 mt-2 text-sm">
+                                Claim your Person in <strong>{spaceName}</strong> so relatives can see how they connect to you.
+                            </p>
+                        </div>
+
+                        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg mb-4">{error}</div>}
+
+                        <div className="flex space-x-2 mb-4">
+                            <button type="button" onClick={() => setMode('pick')}
+                                className={`flex-1 py-2 rounded-xl font-semibold text-sm ${mode === 'pick' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                I'm already listed
+                            </button>
+                            <button type="button" onClick={() => setMode('create')}
+                                className={`flex-1 py-2 rounded-xl font-semibold text-sm ${mode === 'create' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                Add me as new
+                            </button>
+                        </div>
+
+                        {mode === 'pick' ? (
+                            <div>
+                                <input
+                                    type="search"
+                                    placeholder="Search by name…"
+                                    value={query}
+                                    onChange={e => setQuery(e.target.value)}
+                                    className="w-full p-3 border border-slate-200 rounded-xl mb-3"
+                                />
+                                <div className="max-h-72 overflow-y-auto scrollbar-thin border border-slate-100 rounded-xl">
+                                    {loading ? (
+                                        <p className="p-4 text-center text-slate-500 text-sm">Loading…</p>
+                                    ) : persons.length === 0 ? (
+                                        <p className="p-4 text-center text-slate-500 text-sm">
+                                            No matching unclaimed people. Try “Add me as new”.
+                                        </p>
+                                    ) : (
+                                        persons.map(p => (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                disabled={busy}
+                                                onClick={() => claimExisting(p)}
+                                                className="w-full text-left p-3 hover:bg-indigo-50 border-b border-slate-50 flex items-center justify-between disabled:opacity-50">
+                                                <div className="flex items-center space-x-3">
+                                                    <PhotoAvatar person={p} size="sm" />
+                                                    <div>
+                                                        <p className="font-semibold text-slate-800">{p.name}</p>
+                                                        {p.nickName && <p className="text-xs text-slate-500">"{p.nickName}"</p>}
+                                                    </div>
+                                                </div>
+                                                <span className="text-indigo-600 text-sm font-semibold">Claim</span>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <form onSubmit={createAndClaim} className="space-y-3">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Full name *</label>
+                                    <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                                        className="w-full p-3 border border-slate-200 rounded-xl" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Nickname</label>
+                                    <input value={form.nickName} onChange={e => setForm({ ...form, nickName: e.target.value })}
+                                        className="w-full p-3 border border-slate-200 rounded-xl" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Gender *</label>
+                                        <select required value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}
+                                            className="w-full p-3 border border-slate-200 rounded-xl">
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Date of birth</label>
+                                        <input type="date" value={form.dateOfBirth} onChange={e => setForm({ ...form, dateOfBirth: e.target.value })}
+                                            className="w-full p-3 border border-slate-200 rounded-xl" />
+                                    </div>
+                                </div>
+                                <button type="submit" disabled={busy}
+                                    className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold disabled:bg-slate-400">
+                                    {busy ? 'Saving…' : 'Create & claim profile'}
+                                </button>
+                            </form>
+                        )}
+
+                        <button type="button" onClick={onLogout} className="mt-6 w-full text-sm text-slate-500 hover:underline">
+                            Sign out
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function InviteMembersModal({ onClose, role }) {
+            const [inviteRole, setInviteRole] = useState('viewer');
+            const [inviteEmail, setInviteEmail] = useState('');
+            const [created, setCreated] = useState(null);
+            const [error, setError] = useState('');
+            const [busy, setBusy] = useState(false);
+
+            if (role !== 'owner') {
+                return (
+                    <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                        <div className="modal-content bg-white rounded-2xl p-6 max-w-md w-full">
+                            <p className="text-slate-600">Only space owners can create invites.</p>
+                            <button onClick={onClose} className="mt-4 w-full bg-slate-200 py-2 rounded-xl">Close</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const create = async () => {
+                setBusy(true);
+                setError('');
+                try {
+                    const result = await apiService.createInvite(inviteRole, inviteEmail.trim() || null);
+                    if (!result.success) throw new Error(result.error || 'Failed to create invite');
+                    setCreated(result.data);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            const inviteUrl = created?.inviteUrl
+                || (created ? `${window.location.origin}/?invite=${encodeURIComponent(created.token)}` : '');
+
+            const delivery = created?.emailDelivery;
+            const deliveryNote = !created?.email
+                ? null
+                : delivery?.delivery === 'smtp'
+                    ? `Invite email sent to ${created.email}`
+                    : delivery?.delivery === 'console'
+                        ? `Email not configured — invite logged on server. Share the link with ${created.email}.`
+                        : delivery?.ok === false
+                            ? `Email failed: ${delivery.error || 'unknown error'}. Share the link manually.`
+                            : null;
+
+            return (
+                <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
+                    <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold text-slate-800">
+                                <i className="fas fa-user-plus mr-2 text-indigo-600"></i>
+                                Invite relative
+                            </h2>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl" aria-label="Close">
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg mb-4">{error}</div>}
+                        {!created ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Email (optional)</label>
+                                    <input
+                                        type="email"
+                                        value={inviteEmail}
+                                        onChange={e => setInviteEmail(e.target.value)}
+                                        placeholder="cousin@example.com"
+                                        className="w-full p-3 border border-slate-200 rounded-xl"
+                                    />
+                                    <p className="text-xs text-slate-500 mt-1">If set, we email the invite link (or log it when SMTP is not configured).</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                                    <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+                                        className="w-full p-3 border border-slate-200 rounded-xl">
+                                        <option value="viewer">Viewer — can explore the graph</option>
+                                        <option value="editor">Editor — can add/edit people & links</option>
+                                    </select>
+                                </div>
+                                <button onClick={create} disabled={busy}
+                                    className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold disabled:bg-slate-400">
+                                    {busy ? 'Creating…' : 'Generate invite'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {deliveryNote && (
+                                    <div className={`text-sm p-3 rounded-lg ${delivery?.delivery === 'smtp' ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'}`}>
+                                        {deliveryNote}
+                                    </div>
+                                )}
+                                <p className="text-sm text-slate-600">Share this link. It expires and is single-use after signup.</p>
+                                <input readOnly value={inviteUrl}
+                                    className="w-full p-3 border border-slate-200 rounded-xl text-sm bg-slate-50" />
+                                <button
+                                    onClick={() => { navigator.clipboard.writeText(inviteUrl); alert('Invite link copied'); }}
+                                    className="btn-primary w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold">
+                                    <i className="fas fa-copy mr-2"></i>Copy link
+                                </button>
+                                <button onClick={() => { setCreated(null); setInviteEmail(''); }} className="w-full text-sm text-slate-500 hover:underline">
+                                    Create another
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
 
         // Photo Avatar Component
         function PhotoAvatar({ person, size = 'md' }) {
@@ -386,7 +1071,7 @@
                             <div className="flex justify-between items-center">
                                 <h2 className="text-2xl font-bold text-slate-800">
                                     <i className="fas fa-user-plus mr-2 text-indigo-600"></i>
-                                    Add Family Member
+                                    Add Member
                                 </h2>
                                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl p-1 rounded-lg transition-colors" aria-label="Close">
                                     <i className="fas fa-times"></i>
@@ -983,7 +1668,7 @@
         }
 
         // Person Profile Modal
-        function PersonProfile({ person, onClose, onEdit, relationships, allPersons }) {
+        function PersonProfile({ person, onClose, onEdit, onDeleteRelationship, canEdit, relationships, allPersons }) {
             if (!person) return null;
 
             const calculateAge = (dob) => {
@@ -999,8 +1684,19 @@
                 return rels.map(r => {
                     const relatedPersonId = r.from === person.id ? r.to : r.from;
                     const relatedPerson = allPersons.find(p => p.id === relatedPersonId);
-                    return { type: r.type, person: relatedPerson };
+                    return {
+                        type: r.type,
+                        person: relatedPerson,
+                        fromId: r.from,
+                        toId: r.to,
+                    };
                 });
+            };
+
+            const handleDeleteRel = async (rel) => {
+                if (!onDeleteRelationship) return;
+                if (!confirm(`Remove ${rel.type.replace(/_/g, ' ')} link with ${rel.person?.name || 'this person'}?`)) return;
+                await onDeleteRelationship({ fromId: rel.fromId, toId: rel.toId, type: rel.type });
             };
 
             return (
@@ -1043,7 +1739,7 @@
                                 </div>
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <p className="text-sm text-gray-500 mb-1">ID</p>
-                                    <p className="text-lg font-semibold text-gray-800">{person.id}</p>
+                                    <p className="text-xs font-mono text-gray-600 break-all">{person.id}</p>
                                 </div>
                             </div>
 
@@ -1062,6 +1758,15 @@
                                                     <span className="text-sm text-gray-500 ml-2">({rel.type.replace(/_/g, ' ')})</span>
                                                 </div>
                                             </div>
+                                            {canEdit && onDeleteRelationship && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteRel(rel)}
+                                                    className="text-red-500 hover:text-red-700 text-sm px-2"
+                                                    title="Remove relationship">
+                                                    <i className="fas fa-unlink"></i>
+                                                </button>
+                                            )}
                                         </div>
                                     )) : (
                                         <p className="text-gray-500 italic">No relationships found</p>
@@ -1070,11 +1775,14 @@
                             </div>
 
                             <div className="flex space-x-3 pt-4 border-t">
-                                <button
-                                    onClick={() => onEdit(person)}
-                                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
-                                    <i className="fas fa-edit mr-2"></i>Edit Profile
-                                </button></div>
+                                {onEdit && (
+                                    <button
+                                        onClick={() => onEdit(person)}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                                        <i className="fas fa-edit mr-2"></i>Edit Profile
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1573,7 +2281,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                 { value: 'PARENT_OF', label: 'Parent Of' },
                 { value: 'SPOUSE_OF', label: 'Spouse Of' },
                 { value: 'SIBLING_OF', label: 'Sibling' },
-                { value: 'FRIEND', label: 'Friend' }
+                { value: 'FRIEND_OF', label: 'Friend' }
             ];
 
             const filteredFromPersons = fromSearchQuery.trim() === ''
@@ -1833,8 +2541,8 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             );
         }
 
-        // Main App Component
-        function App() {
+        // Main kinship explorer (authenticated)
+        function KinshipApp({ session, onLogout, onSessionUpdate }) {
             const [persons, setPersons] = useState([]);
             const [relationships, setRelationships] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
@@ -1842,17 +2550,23 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             const [showProfile, setShowProfile] = useState(false);
             const [showEditModal, setShowEditModal] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
+            const [showInviteModal, setShowInviteModal] = useState(false);
             const [highlightPath, setHighlightPath] = useState(null);
             const [pathResult, setPathResult] = useState(null);
+            const [pathExplanation, setPathExplanation] = useState(null);
             const [loading, setLoading] = useState(true);
             const [stats, setStats] = useState({});
             const [error, setError] = useState(null);
-            const [rootPersonId, setRootPersonId] = useState(null);
+            const [rootPersonId, setRootPersonId] = useState(session.personId || null);
             const [showAddRelationshipModal, setShowAddRelationshipModal] = useState(false);
 
+            const canEdit = session.role === 'owner' || session.role === 'editor';
+            const spaceName = (session.spaces || []).find(s => s.id === session.spaceId)?.name || 'Kinship space';
+
             useEffect(() => {
+                apiService.setAuth(session.token, session.spaceId);
                 loadData();
-            }, []);
+            }, [session.token, session.spaceId]);
 
             async function loadData() {
                 setLoading(true);
@@ -1866,11 +2580,14 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                     setPersons(personsData);
                     setRelationships(relationshipsData);
                     setStats(statsData);
-                    // Default root to node '0' or first person on initial load
-                    setRootPersonId(prev => prev || (personsData.find(n => n.id === '0') || personsData[0])?.id || null);
-                } catch (error) {
-                    console.error('Error loading data:', error);
-                    setError('Failed to connect to the server. Please ensure the backend is running on http://localhost:8010');
+                    setRootPersonId(prev => prev || session.personId || personsData[0]?.id || null);
+                } catch (err) {
+                    console.error('Error loading data:', err);
+                    if (err.status === 401) {
+                        onLogout();
+                        return;
+                    }
+                    setError(err.message || 'Failed to load kinship graph. Is the server running?');
                 } finally {
                     setLoading(false);
                 }
@@ -1887,6 +2604,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             };
 
             const handleEdit = (person) => {
+                if (!canEdit) return;
                 setShowProfile(false);
                 setSelectedPerson(person);
                 setShowEditModal(true);
@@ -1914,19 +2632,48 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
 
             const handleFindPath = async (personId1, personId2) => {
                 try {
-                    const path = await apiService.findShortestPath(personId1, personId2);
-                    setHighlightPath(path);
-
-                    if (path) {
-                        const pathPersons = path.map(id => persons.find(p => p.id === id));
-                        setPathResult(pathPersons);
+                    const pathData = await apiService.findShortestPath(personId1, personId2);
+                    if (pathData?.nodeIds?.length) {
+                        setHighlightPath(pathData.nodeIds);
+                        setPathResult(pathData.nodeIds.map(id => persons.find(p => p.id === id)).filter(Boolean));
+                        setPathExplanation(pathData.explanation || null);
                     } else {
+                        setHighlightPath(null);
                         setPathResult([]);
+                        setPathExplanation(null);
                     }
-                } catch (error) {
-                    console.error('Error finding path:', error);
+                } catch (err) {
+                    console.error('Error finding path:', err);
                     alert('Failed to find path');
                 }
+            };
+
+            const switchSpace = async (spaceId) => {
+                const space = (session.spaces || []).find(s => s.id === spaceId);
+                if (!space) return;
+                try {
+                    apiService.setAuth(session.token, spaceId);
+                    const me = await apiService.me(spaceId);
+                    const claim = me.data || {};
+                    const next = {
+                        ...session,
+                        spaceId,
+                        role: space.role,
+                        personId: claim.personId || null,
+                        personName: claim.personName || null,
+                        needsClaim: !!claim.needsClaim,
+                    };
+                    saveSession(next);
+                    onSessionUpdate(next);
+                } catch (err) {
+                    alert(err.message || 'Could not switch space');
+                }
+            };
+
+            const changeWhoIAm = () => {
+                const next = { ...session, personId: null, personName: null, needsClaim: true };
+                saveSession(next);
+                onSessionUpdate(next);
             };
 
             if (loading) {
@@ -1934,7 +2681,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                     <div className="min-h-screen flex items-center justify-center">
                         <div className="text-center">
                             <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-white mx-auto mb-4"></div>
-                            <p className="text-white text-xl font-semibold">Loading Family Tree...</p>
+                            <p className="text-white text-xl font-semibold">Loading kinship graph…</p>
                         </div>
                     </div>
                 );
@@ -1945,13 +2692,16 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                     <div className="min-h-screen flex items-center justify-center p-6">
                         <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8 max-w-md text-center">
                             <i className="fas fa-exclamation-triangle text-6xl text-red-500 mb-4"></i>
-                            <h2 className="text-2xl font-bold text-slate-800 mb-4">Connection Error</h2>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-4">Could not load graph</h2>
                             <p className="text-slate-600 mb-6">{error}</p>
-                            <button
-                                onClick={loadData}
-                                className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
-                                <i className="fas fa-redo mr-2"></i>Retry Connection
-                            </button>
+                            <div className="flex gap-3">
+                                <button onClick={loadData} className="btn-primary flex-1 bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
+                                    Retry
+                                </button>
+                                <button onClick={onLogout} className="flex-1 bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-semibold">
+                                    Sign out
+                                </button>
+                            </div>
                         </div>
                     </div>
                 );
@@ -1961,24 +2711,60 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                 <div className="min-h-screen p-6">
                     <div className="max-w-7xl mx-auto mb-6">
                         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6 md:p-8">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
                                 <div>
                                     <h1 className="text-3xl md:text-4xl font-bold text-slate-800 flex items-center">
                                         <i className="fas fa-sitemap mr-3 text-indigo-600"></i>
-                                        Relation Explorer
+                                        PeopleGraph
                                     </h1>
-                                    <p className="text-slate-500 mt-1 font-medium">{persons.length} family member{persons.length !== 1 ? 's' : ''} connected</p>
+                                    <p className="text-slate-500 mt-1 font-medium">
+                                        {spaceName} · {persons.length} member{persons.length !== 1 ? 's' : ''} · you are <span className="capitalize">{session.role}</span>
+                                        {session.personName && (
+                                            <> · graph profile: <strong className="text-slate-700">{session.personName}</strong></>
+                                        )}
+                                    </p>
                                 </div>
-                                <button
-                                    onClick={() => setShowAddModal(true)}
-                                    className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/25">
-                                    <i className="fas fa-plus mr-2"></i>Add Member
-                                </button>
-                                <button
-                                    onClick={() => setShowAddRelationshipModal(true)}
-                                    className="btn-primary bg-green-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-green-500/25">
-                                    <i className="fas fa-link mr-2"></i>Add Relationship
-                                </button>
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    {(session.spaces || []).length > 1 && (
+                                        <select
+                                            value={session.spaceId}
+                                            onChange={e => switchSpace(e.target.value)}
+                                            className="p-3 border border-slate-200 rounded-xl text-sm">
+                                            {session.spaces.map(s => (
+                                                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    <button onClick={changeWhoIAm}
+                                        className="bg-white border border-slate-200 text-slate-700 px-4 py-3 rounded-xl font-semibold hover:bg-slate-50 text-sm"
+                                        title="Claim a different person">
+                                        <i className="fas fa-id-card mr-2"></i>Who I am
+                                    </button>
+                                    {session.role === 'owner' && (
+                                        <button onClick={() => setShowInviteModal(true)}
+                                            className="bg-white border border-indigo-200 text-indigo-700 px-4 py-3 rounded-xl font-semibold hover:bg-indigo-50">
+                                            <i className="fas fa-user-plus mr-2"></i>Invite
+                                        </button>
+                                    )}
+                                    {canEdit && (
+                                        <>
+                                            <button onClick={() => setShowAddModal(true)}
+                                                className="btn-primary bg-indigo-600 text-white px-4 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/25">
+                                                <i className="fas fa-plus mr-2"></i>Add Member
+                                            </button>
+                                            <button onClick={() => setShowAddRelationshipModal(true)}
+                                                className="btn-primary bg-emerald-600 text-white px-4 py-3 rounded-xl font-semibold">
+                                                <i className="fas fa-link mr-2"></i>Add Link
+                                            </button>
+                                        </>
+                                    )}
+                                    <button onClick={onLogout}
+                                        className="text-slate-500 hover:text-slate-800 px-3 py-3 text-sm font-medium"
+                                        title="Sign out">
+                                        <i className="fas fa-sign-out-alt mr-1"></i>
+                                        {session.user?.name || session.user?.email}
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="relative">
@@ -2009,9 +2795,6 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                                                         {person.nickName && <p className="text-sm text-slate-500">"{person.nickName}"</p>}
                                                     </div>
                                                 </div>
-                                                <span className="text-sm text-slate-500">
-                                                    {person.dateOfBirth ? new Date(person.dateOfBirth).getFullYear() : ''}
-                                                </span>
                                             </div>
                                         ))
                                     )}
@@ -2027,10 +2810,32 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                             <div className="mt-4 bg-white rounded-xl shadow-lg border border-slate-100 p-6">
                                 {pathResult.length > 0 ? (
                                     <div>
-                                        <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                                        <h4 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
                                             <i className="fas fa-check-circle mr-2 text-green-600"></i>
-                                            Connection Found ({pathResult.length} steps)
+                                            How they connect
+                                            {pathExplanation?.degree != null && (
+                                                <span className="ml-2 text-sm font-medium text-slate-500">
+                                                    ({pathExplanation.degree} hop{pathExplanation.degree !== 1 ? 's' : ''})
+                                                </span>
+                                            )}
                                         </h4>
+                                        {pathExplanation?.summary && (
+                                            <p className="text-slate-700 bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-4 leading-relaxed">
+                                                {pathExplanation.summary}
+                                            </p>
+                                        )}
+                                        {pathExplanation?.hops?.length > 0 && (
+                                            <ol className="mb-4 space-y-2">
+                                                {pathExplanation.hops.map((hop, idx) => (
+                                                    <li key={idx} className="flex items-start text-sm text-slate-600">
+                                                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-bold mr-2">
+                                                            {idx + 1}
+                                                        </span>
+                                                        {hop}
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                        )}
                                         <div className="flex items-center space-x-2 overflow-x-auto pb-2">
                                             {pathResult.map((person, idx) => (
                                                 <React.Fragment key={person.id}>
@@ -2045,7 +2850,7 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                                             ))}
                                         </div>
                                     </div>
-                                ) : pathResult.length === 0 && (
+                                ) : (
                                     <div className="text-center text-gray-600">
                                         <i className="fas fa-times-circle text-4xl text-red-500 mb-2"></i>
                                         <p className="font-semibold">No connection found between selected persons</p>
@@ -2062,13 +2867,14 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                                     <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-6">
                                         <i className="fas fa-users text-4xl text-indigo-600"></i>
                                     </div>
-                                    <h3 className="text-xl font-bold text-slate-800 mb-2">No family members yet</h3>
-                                    <p className="text-slate-500 mb-6">Add your first family member to start building your tree. You can add photos and relationships later.</p>
-                                    <button
-                                        onClick={() => setShowAddModal(true)}
-                                        className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
-                                        <i className="fas fa-plus mr-2"></i>Add First Member
-                                    </button>
+                                    <h3 className="text-xl font-bold text-slate-800 mb-2">No people in this space yet</h3>
+                                    <p className="text-slate-500 mb-6">Add relatives and connect them so everyone can see how they relate.</p>
+                                    {canEdit && (
+                                        <button onClick={() => setShowAddModal(true)}
+                                            className="btn-primary bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
+                                            <i className="fas fa-plus mr-2"></i>Add First Member
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -2092,13 +2898,22 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                         <PersonProfile
                             person={selectedPerson}
                             onClose={() => setShowProfile(false)}
-                            onEdit={handleEdit}
+                            onEdit={canEdit ? handleEdit : null}
+                            canEdit={canEdit}
+                            onDeleteRelationship={canEdit ? async (rel) => {
+                                const result = await apiService.deleteRelationship(rel);
+                                if (!result.success) {
+                                    alert(result.error || 'Failed to delete relationship');
+                                    return;
+                                }
+                                await loadData();
+                            } : null}
                             relationships={relationships}
                             allPersons={persons}
                         />
                     )}
 
-                    {showEditModal && (
+                    {showEditModal && canEdit && (
                         <EditPersonModal
                             person={selectedPerson}
                             onClose={() => setShowEditModal(false)}
@@ -2106,18 +2921,25 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
                         />
                     )}
 
-                    {showAddModal && (
+                    {showAddModal && canEdit && (
                         <AddPersonModal
                             onClose={() => setShowAddModal(false)}
                             onSave={handleAddPerson}
                         />
                     )}
 
-                    {showAddRelationshipModal && (
+                    {showAddRelationshipModal && canEdit && (
                         <AddRelationshipModal
                             persons={persons}
                             onClose={() => setShowAddRelationshipModal(false)}
                             onSave={loadData}
+                        />
+                    )}
+
+                    {showInviteModal && (
+                        <InviteMembersModal
+                            role={session.role}
+                            onClose={() => setShowInviteModal(false)}
                         />
                     )}
 
@@ -2147,7 +2969,148 @@ function FamilyTree({ data, onNodeClick, highlightPath, rootPersonId }) {
             );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        function RootApp() {
+            const [session, setSession] = useState(null);
+            const [authView, setAuthView] = useState(() => getInviteTokenFromUrl() ? 'register' : 'login');
+            const [booting, setBooting] = useState(true);
+            const [canBootstrap, setCanBootstrap] = useState(false);
+
+            useEffect(() => {
+                async function boot() {
+                    const saved = loadSession();
+                    if (saved?.token) {
+                        apiService.setAuth(saved.token, saved.spaceId);
+                        try {
+                            const me = await apiService.me(saved.spaceId);
+                            if (me.success) {
+                                const spaces = me.data.spaces || [];
+                                const spaceId = saved.spaceId && spaces.some(s => s.id === saved.spaceId)
+                                    ? saved.spaceId
+                                    : spaces[0]?.id;
+                                const meForSpace = spaceId && spaceId !== saved.spaceId
+                                    ? await apiService.me(spaceId)
+                                    : me;
+                                const payload = meForSpace.data || me.data;
+                                const role = spaces.find(s => s.id === spaceId)?.role || saved.role;
+                                const next = {
+                                    token: saved.token,
+                                    user: payload.user,
+                                    spaces,
+                                    spaceId,
+                                    role,
+                                    personId: payload.personId || null,
+                                    personName: payload.personName || null,
+                                    needsClaim: !!payload.needsClaim,
+                                };
+                                saveSession(next);
+                                setSession(next);
+                                setBooting(false);
+                                return;
+                            }
+                        } catch {
+                            clearSession();
+                        }
+                    }
+
+                    // Probe whether bootstrap is still available
+                    try {
+                        const r = await fetch(`${API_BASE_URL}/api/auth/bootstrap`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: '', password: '' }),
+                        });
+                        const data = await r.json();
+                        // 403 => users exist; 400 => validation but bootstrap endpoint open
+                        setCanBootstrap(r.status === 400 || (data.error || '').includes('required'));
+                        if (r.status === 403) setCanBootstrap(false);
+                    } catch {
+                        setCanBootstrap(true);
+                    }
+
+                    if (getInviteTokenFromUrl()) setAuthView('register');
+                    setBooting(false);
+                }
+                boot();
+            }, []);
+
+            const handleAuthSuccess = (next) => {
+                saveSession(next);
+                apiService.setAuth(next.token, next.spaceId);
+                setSession(next);
+            };
+
+            const handleClaimed = (next) => {
+                saveSession(next);
+                apiService.setAuth(next.token, next.spaceId);
+                setSession(next);
+            };
+
+            const handleLogout = () => {
+                clearSession();
+                apiService.setAuth(null, null);
+                setSession(null);
+                setAuthView('login');
+            };
+
+            if (booting) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-white"></div>
+                    </div>
+                );
+            }
+
+            if (!session) {
+                if (authView === 'register') {
+                    return (
+                        <RegisterForm
+                            inviteToken={getInviteTokenFromUrl()}
+                            onSuccess={handleAuthSuccess}
+                            onSwitchLogin={() => setAuthView('login')}
+                        />
+                    );
+                }
+                if (authView === 'bootstrap') {
+                    return (
+                        <BootstrapForm
+                            onSuccess={handleAuthSuccess}
+                            onSwitchLogin={() => setAuthView('login')}
+                        />
+                    );
+                }
+                return (
+                    <LoginForm
+                        onSuccess={handleAuthSuccess}
+                        onSwitchRegister={() => setAuthView('register')}
+                        onSwitchBootstrap={() => setAuthView('bootstrap')}
+                        canBootstrap={canBootstrap}
+                    />
+                );
+            }
+
+            if (session.needsClaim || !session.personId) {
+                return (
+                    <ClaimOnboarding
+                        session={session}
+                        onClaimed={handleClaimed}
+                        onLogout={handleLogout}
+                    />
+                );
+            }
+
+            return (
+                <KinshipApp
+                    session={session}
+                    onLogout={handleLogout}
+                    onSessionUpdate={(next) => {
+                        saveSession(next);
+                        setSession(next);
+                    }}
+                />
+            );
+        }
+
+        ReactDOM.render(<RootApp />, document.getElementById('root'));
     </script>
 </body>
 </html>

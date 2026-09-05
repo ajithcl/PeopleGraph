@@ -1,0 +1,17 @@
+uploads/*
+copilot*
+archive/*
+*.iml
+misc.xml
+modules.xml
+vcs.xml
+workspace.xml
+profiles_settings.xml
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+frontend/node_modules/
+frontend/dist/

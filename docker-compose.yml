@@ -1,0 +1,19 @@
+# Example compose for local/staging production-like run.
+# Requires an external or linked Neo4j instance.
+
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT:-8010}:8010"
+    env_file:
+      - .env
+    environment:
+      FLASK_DEBUG: "false"
+      WEB_CONCURRENCY: "2"
+    volumes:
+      - photo_data:/app/uploads/photos
+    restart: unless-stopped
+
+volumes:
+  photo_data:
