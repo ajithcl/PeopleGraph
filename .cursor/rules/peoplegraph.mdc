@@ -1,0 +1,36 @@
+---
+description: PeopleGraph product context, stack, conventions, and resume guidance
+alwaysApply: true
+---
+
+# PeopleGraph
+
+Private, invite-only kinship graphs — relatives join a space and see how they connect. Not a general social network or public feed.
+
+## Stack
+
+- Backend: Flask app factory in `peoplegraph/` (`app.py` → `create_app()`)
+- Graph DB: Neo4j (space-scoped `:Person`, `:Space`, roles `owner|editor|viewer`)
+- Frontend: Vite + React + Tailwind + D3 in `frontend/` (Phase 6). Flask serves `frontend/dist` when built; legacy HTML at `/legacy`
+- Auth: invite-only register, bootstrap (first user), Bearer tokens (`itsdangerous`)
+
+## Run locally
+
+- Prefer `.venv/bin/python` and `.venv/bin/pip` (system `python` may lack deps)
+- API: `.venv/bin/python app.py` → typically `:8010` from `.env`
+- SPA dev: `cd frontend && npm install && npm run dev` → `:5173` (proxies `/api`, `/uploads`)
+- Prod-ish: `cd frontend && npm run build`, then Flask alone on `:8010`
+
+## Conventions
+
+- All graph APIs are space-scoped: `/api/spaces/<spaceId>/...`
+- Claim flow required after invite signup (`needsClaim`); bootstrap owner auto-claims
+- Do not commit real secrets; `.env` is local, `.env.example` has dummies
+- Prefer extending `peoplegraph/` and `frontend/src/` over the legacy HTML file
+- Phase docs: `PHASE1.md` … `PHASE6.md`; live status: `STATUS.md`
+
+## Resume work
+
+1. Read `STATUS.md` for current focus and next Jira ticket
+2. Jira site: `https://ajith.atlassian.net` — project `SCRUM`, label `peoplegraph`
+3. Ask Jira for next open story if status is stale: `project = SCRUM AND labels = peoplegraph AND issuetype = Story AND statusCategory != Done ORDER BY priority DESC, key ASC`
