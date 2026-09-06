@@ -2,7 +2,7 @@
 
 ## What shipped
 
-- Login / invite register / bootstrap screens in [family-tree-radial-v2.html](family-tree-radial-v2.html)
+- Login / invite register / bootstrap screens (now in `frontend/`; archived HTML in [legacy/family-tree-radial-v2.html](legacy/family-tree-radial-v2.html))
 - Session stored in `localStorage` (`peoplegraph_session`)
 - All graph calls use `Authorization: Bearer …` and `/api/spaces/<spaceId>/…`
 - Role-aware UI: viewers explore; editors add/edit; owners invite
@@ -32,7 +32,7 @@ python3 app.py
 
 | File | Change |
 |------|--------|
-| `family-tree-radial-v2.html` | Auth gate, ApiService, KinshipApp, Invite modal |
+| `legacy/family-tree-radial-v2.html` | Archived Babel-in-browser UI (replaced by the SPA) |
 | `peoplegraph/__init__.py` | Serves `/` and `/app` UI |
 | `peoplegraph/config.py` | CORS includes `:8010` |
 

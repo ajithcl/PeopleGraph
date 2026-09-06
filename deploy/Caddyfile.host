@@ -1,0 +1,21 @@
+# Host-network proxy: gunicorn on this machine, Caddy terminates TLS.
+# Does not need root (port 8443 instead of 443).
+#
+#   gunicorn -c gunicorn.conf.py "peoplegraph:create_app()"
+#   caddy run --config deploy/Caddyfile.host
+#
+# Then: https://localhost:8443/health
+# LAN:  https://<this-machine-ip>:8443/
+
+:8443 {
+	reverse_proxy 127.0.0.1:8010
+	tls internal
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+}

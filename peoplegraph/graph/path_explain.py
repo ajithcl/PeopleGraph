@@ -7,8 +7,11 @@ FORWARD_PHRASES = {
     'PARENT_OF': '{a} is a parent of {b}',
     'CHILD_OF': '{a} is a child of {b}',
     'SPOUSE_OF': '{a} is a spouse of {b}',
+    'SPOUSE': '{a} is a spouse of {b}',
     'SIBLING_OF': '{a} is a sibling of {b}',
+    'SIBLING': '{a} is a sibling of {b}',
     'FRIEND_OF': '{a} is a friend of {b}',
+    'FRIEND': '{a} is a friend of {b}',
 }
 
 # When the edge is stored in the opposite direction relative to walk order
@@ -17,8 +20,11 @@ REVERSE_PHRASES = {
     'PARENT_OF': '{a} is a child of {b}',
     'CHILD_OF': '{a} is a parent of {b}',
     'SPOUSE_OF': '{a} is a spouse of {b}',
+    'SPOUSE': '{a} is a spouse of {b}',
     'SIBLING_OF': '{a} is a sibling of {b}',
+    'SIBLING': '{a} is a sibling of {b}',
     'FRIEND_OF': '{a} is a friend of {b}',
+    'FRIEND': '{a} is a friend of {b}',
 }
 
 

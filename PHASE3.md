@@ -31,11 +31,11 @@ python migrate_legacy_persons.py --space-id YOUR_SPACE_UUID
 
 ### Production-style run
 
+See [DEPLOY.md](DEPLOY.md) (gunicorn + Caddy HTTPS). Short version:
+
 ```bash
-# set SECRET_KEY, JWT_SECRET, NEO4J_*, FLASK_DEBUG=false in .env
-gunicorn -c gunicorn.conf.py "peoplegraph:create_app()"
-# or
-docker compose up --build
+docker compose up --build -d
+curl -k https://localhost/health
 ```
 
 ## Path response shape (excerpt)

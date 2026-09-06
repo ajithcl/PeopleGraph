@@ -7,7 +7,7 @@ Replaced the Babel-in-browser single HTML app with a proper **Vite + React + Tai
 - Auth (login / invite register / bootstrap)
 - Claim Person onboarding
 - Kinship explorer, path finder, D3 radial tree, invites, add/edit person & relationships
-- Flask serves `frontend/dist` when built; falls back to `family-tree-radial-v2.html` if dist is missing
+- Flask serves `frontend/dist` when built; the old HTML explorer is archived under `legacy/` (`/legacy` returns 410)
 - Legacy UI still available at `/legacy`
 
 ## Dev workflow

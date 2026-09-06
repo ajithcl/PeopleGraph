@@ -1,5 +1,7 @@
 """Shared serializers and date helpers."""
 
+from datetime import datetime, timezone
+
 import neo4j
 
 
@@ -53,11 +55,35 @@ def format_space(node, role=None):
     return data
 
 
-def format_invite(node):
+def invite_status(props, now=None):
+    """pending | used | expired | revoked."""
+    now = now or datetime.now(timezone.utc)
+    if props.get('revoked'):
+        return 'revoked'
+    if props.get('usedAt'):
+        return 'used'
+    expires_at = props.get('expiresAt')
+    if expires_at:
+        try:
+            exp = datetime.fromisoformat(str(expires_at).replace('Z', '+00:00'))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if now > exp:
+                return 'expired'
+        except ValueError:
+            pass
+    return 'pending'
+
+
+def format_invite(node, created_by_name=None, created_by_email=None, include_token=None):
+    from peoplegraph.config import Config
+
     props = dict(node)
-    return {
+    status = invite_status(props)
+    token = props.get('token')
+    show_token = include_token if include_token is not None else status == 'pending'
+    data = {
         'id': props.get('id'),
-        'token': props.get('token'),
         'spaceId': props.get('spaceId'),
         'role': props.get('role', 'viewer'),
         'email': props.get('email'),
@@ -65,4 +91,13 @@ def format_invite(node):
         'usedAt': props.get('usedAt'),
         'createdAt': props.get('createdAt'),
         'revoked': bool(props.get('revoked', False)),
+        'status': status,
+        'createdByName': created_by_name or '',
+        'createdByEmail': created_by_email or '',
     }
+    if show_token and token:
+        base = (Config.APP_PUBLIC_URL or '').rstrip('/')
+        data['token'] = token
+        data['invitePath'] = f'/?invite={token}'
+        data['inviteUrl'] = f'{base}/?invite={token}'
+    return data

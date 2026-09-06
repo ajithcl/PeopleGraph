@@ -100,12 +100,12 @@ curl -s http://localhost:8010/api/spaces/$SPACE/persons \
 
 ## Frontend note
 
-`family-tree-radial-v2.html` still calls the old unauthenticated API. Phase 2 should add a login/invite UI and call space-scoped endpoints with JWT.
+`family-tree-radial-v2.html` (now in `legacy/`) still called the old unauthenticated API. Phase 2 added login/invite UI and space-scoped endpoints with JWT.
 
 ## Security checklist (before public deploy)
 
-- [ ] Set strong `SECRET_KEY` and `JWT_SECRET`
+- [x] Set strong `SECRET_KEY` and `JWT_SECRET` ([SCRUM-15](https://ajith.atlassian.net/browse/SCRUM-15); app refuses weak keys when `FLASK_DEBUG=false`)
 - [ ] Set `FLASK_DEBUG=false`
 - [ ] Restrict `CORS_ORIGINS`
-- [ ] Ensure `.env` is gitignored
+- [x] Ensure `.env` is gitignored (tracked dummy `.env` removed; `.env.example` only)
 - [ ] Use HTTPS and managed Neo4j backups

@@ -1,5 +1,6 @@
 # Production process config for gunicorn
 # Usage: gunicorn -c gunicorn.conf.py "peoplegraph:create_app()"
+# Docker: see Dockerfile CMD. HTTPS is terminated by Caddy (deploy/Caddyfile).
 
 import os
 

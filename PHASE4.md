@@ -11,8 +11,8 @@
 
 ### Invite email
 - [`peoplegraph/email_service.py`](peoplegraph/email_service.py)
-- If `SMTP_*` is set → send invite email
-- If not → log the email to the server console (`delivery: console`)
+- If `SMTP_*` is set to **real** host + from-address → send invite email
+- Dummy `.env.example` values (`example.com`) stay on the **console** fallback
 - Invite UI accepts optional email and shows delivery status
 - Invite links use `APP_PUBLIC_URL`
 

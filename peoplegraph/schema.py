@@ -38,6 +38,10 @@ INDEXES = [
     CREATE INDEX invite_space IF NOT EXISTS
     FOR (i:Invite) ON (i.spaceId)
     """,
+    """
+    CREATE INDEX activity_space IF NOT EXISTS
+    FOR (a:Activity) ON (a.spaceId)
+    """,
 ]
 
 

@@ -11,7 +11,7 @@ from peoplegraph.auth.decorators import require_auth
 from peoplegraph.config import Config
 from peoplegraph.db import get_driver
 from peoplegraph.email_service import send_invite_email
-from peoplegraph.serializers import format_invite
+from peoplegraph.serializers import format_invite, invite_status
 from peoplegraph.tenancy import require_space_access
 
 logger = logging.getLogger(__name__)
@@ -32,13 +32,20 @@ def list_invites(space_id):
         result = session.run(
             """
             MATCH (i:Invite {spaceId: $spaceId})
-            WHERE coalesce(i.revoked, false) = false
-            RETURN i
+            OPTIONAL MATCH (creator:User {id: i.createdByUserId})
+            RETURN i, creator.name AS createdByName, creator.email AS createdByEmail
             ORDER BY i.createdAt DESC
             """,
             spaceId=space_id,
         )
-        invites = [format_invite(r['i']) for r in result]
+        invites = [
+            format_invite(
+                r['i'],
+                created_by_name=r['createdByName'],
+                created_by_email=r['createdByEmail'],
+            )
+            for r in result
+        ]
     return jsonify({'success': True, 'data': invites})
 
 
@@ -138,7 +145,6 @@ def revoke_invite(space_id, invite_id):
         record = session.run(
             """
             MATCH (i:Invite {id: $inviteId, spaceId: $spaceId})
-            SET i.revoked = true
             RETURN i
             """,
             inviteId=invite_id,
@@ -146,6 +152,21 @@ def revoke_invite(space_id, invite_id):
         ).single()
         if not record:
             return jsonify({'success': False, 'error': 'Invite not found'}), 404
+
+        inv = dict(record['i'])
+        if inv.get('usedAt'):
+            return jsonify({'success': False, 'error': 'Cannot revoke an invite that was already used'}), 400
+        if inv.get('revoked'):
+            return jsonify({'success': True, 'message': 'Invite already revoked'})
+
+        session.run(
+            """
+            MATCH (i:Invite {id: $inviteId, spaceId: $spaceId})
+            SET i.revoked = true
+            """,
+            inviteId=invite_id,
+            spaceId=space_id,
+        )
 
     return jsonify({'success': True, 'message': 'Invite revoked'})
 
@@ -172,11 +193,19 @@ def _preview_by_token(token):
         ).single()
 
         if not record:
-            return jsonify({'success': False, 'error': 'Invite not found'}), 404
+            return jsonify({
+                'success': False,
+                'error': 'Invite not found. Check the link or ask the family owner for a new one.',
+            }), 404
 
         inv = dict(record['i'])
-        if inv.get('revoked') or inv.get('usedAt'):
-            return jsonify({'success': False, 'error': 'Invite no longer valid'}), 400
+        status = invite_status(inv)
+        if status == 'revoked':
+            return jsonify({'success': False, 'error': 'This invite was revoked. Ask the family owner for a new link.'}), 400
+        if status == 'used':
+            return jsonify({'success': False, 'error': 'This invite was already used. Sign in if you already have an account, or ask for a new link.'}), 400
+        if status == 'expired':
+            return jsonify({'success': False, 'error': 'This invite has expired. Ask the family owner for a new link.'}), 400
 
         return jsonify({
             'success': True,

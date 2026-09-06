@@ -11,7 +11,7 @@ Private, invite-only kinship graphs — relatives join a space and see how they 
 
 - Backend: Flask app factory in `peoplegraph/` (`app.py` → `create_app()`)
 - Graph DB: Neo4j (space-scoped `:Person`, `:Space`, roles `owner|editor|viewer`)
-- Frontend: Vite + React + Tailwind + D3 in `frontend/` (Phase 6). Flask serves `frontend/dist` when built; legacy HTML at `/legacy`
+- Frontend: Vite + React + Tailwind + D3 in `frontend/` (Phase 6+). Flask serves `frontend/dist` when built; `/legacy` is archived (see `legacy/`)
 - Auth: invite-only register, bootstrap (first user), Bearer tokens (`itsdangerous`)
 
 ## Run locally
@@ -27,7 +27,16 @@ Private, invite-only kinship graphs — relatives join a space and see how they 
 - Claim flow required after invite signup (`needsClaim`); bootstrap owner auto-claims
 - Do not commit real secrets; `.env` is local, `.env.example` has dummies
 - Prefer extending `peoplegraph/` and `frontend/src/` over the legacy HTML file
-- Phase docs: `PHASE1.md` … `PHASE6.md`; live status: `STATUS.md`
+- Phase docs: `PHASE1.md` … `PHASE7.md`; live status: `STATUS.md`
+
+## After shipping a change (always run)
+
+`FLASK_DEBUG=false`, so Flask does **not** auto-reload. After API or SPA work, always:
+
+1. Rebuild the SPA if `frontend/src` changed: `cd frontend && npm run build`
+2. Restart `.venv/bin/python app.py` (stop the old process on `:8010` first)
+3. Hit `GET /health` and exercise the changed flow (not only a screenshot)
+4. Transition the Jira story to **Done** and update `STATUS.md`
 
 ## Resume work
 

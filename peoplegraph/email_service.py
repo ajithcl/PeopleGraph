@@ -9,9 +9,24 @@ from peoplegraph.config import Config
 
 logger = logging.getLogger(__name__)
 
+# .env.example placeholders — copying them must not enable SMTP.
+_DUMMY_SMTP_MARKERS = (
+    'dummy-smtp',
+    'dummy@example.com',
+    'noreply@example.com',
+    'example.com',
+)
+
 
 def smtp_configured() -> bool:
-    return bool(Config.SMTP_HOST and Config.SMTP_FROM)
+    host = (Config.SMTP_HOST or '').strip()
+    from_addr = (Config.SMTP_FROM or '').strip()
+    if not host or not from_addr:
+        return False
+    lowered = from_addr.lower()
+    if any(marker in lowered for marker in _DUMMY_SMTP_MARKERS):
+        return False
+    return True
 
 
 def send_email(to_email: str, subject: str, text_body: str, html_body: str = None) -> dict:
@@ -74,6 +89,36 @@ def send_invite_email(to_email: str, space_name: str, role: str, invite_url: str
       <p>{inviter_line} to join <strong>{space_name}</strong> as <strong>{role}</strong>.</p>
       <p><a href="{invite_url}" style="display:inline-block;background:#4f46e5;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;">Accept invite</a></p>
       <p style="color:#64748b;font-size:14px;">Or paste this link:<br>{invite_url}</p>
+    </div>
+    """
+    return send_email(to_email, subject, text, html)
+
+
+def send_invite_accepted_email(to_email: str, space_name: str, joiner_name: str, joiner_email: str) -> dict:
+    subject = f'{joiner_name} joined {space_name} on PeopleGraph'
+    text = (
+        f'{joiner_name} ({joiner_email}) accepted your invite and joined '
+        f'the private kinship space "{space_name}".\n'
+    )
+    html = f"""
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; line-height: 1.5;">
+      <h2 style="color: #4f46e5;">Someone joined {space_name}</h2>
+      <p><strong>{joiner_name}</strong> ({joiner_email}) accepted your invite.</p>
+    </div>
+    """
+    return send_email(to_email, subject, text, html)
+
+
+def send_claim_notice_email(to_email: str, space_name: str, claimant_name: str, person_name: str) -> dict:
+    subject = f'{claimant_name} claimed a profile in {space_name}'
+    text = (
+        f'{claimant_name} said they are "{person_name}" in the kinship space "{space_name}".\n'
+    )
+    html = f"""
+    <div style="font-family: system-ui, sans-serif; max-width: 520px; line-height: 1.5;">
+      <h2 style="color: #4f46e5;">Profile claimed</h2>
+      <p><strong>{claimant_name}</strong> is now listed as <strong>{person_name}</strong>
+      in <strong>{space_name}</strong>.</p>
     </div>
     """
     return send_email(to_email, subject, text, html)

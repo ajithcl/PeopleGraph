@@ -100,6 +100,17 @@ class ApiService {
     })
   }
 
+  listInvites() {
+    return this.request(this.spacePath('/invites'), { headers: this.authHeaders(false) })
+  }
+
+  revokeInvite(inviteId) {
+    return this.request(this.spacePath(`/invites/${inviteId}/revoke`), {
+      method: 'POST',
+      headers: this.authHeaders(),
+    })
+  }
+
   getClaimablePersons(query = '') {
     const q = query ? `?query=${encodeURIComponent(query)}` : ''
     return this.request(this.spacePath(`/profile/claimable${q}`), { headers: this.authHeaders(false) })
@@ -119,6 +130,19 @@ class ApiService {
       headers: this.authHeaders(),
       body: JSON.stringify(payload),
     })
+  }
+
+  unclaimPerson() {
+    return this.request(this.spacePath('/profile/claim'), {
+      method: 'DELETE',
+      headers: this.authHeaders(false),
+    })
+  }
+
+  getActivity() {
+    return this.request(this.spacePath('/activity'), { headers: this.authHeaders(false) }).then(
+      (d) => d.data || [],
+    )
   }
 
   getAllPersons() {

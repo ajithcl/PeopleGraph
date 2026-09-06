@@ -1,0 +1,171 @@
+"""API tests for invite-only register, space isolation, and claim rules.
+
+Uses the live Neo4j from `.env`. Creates a throwaway space named SCRUM26-* and
+deletes it afterwards. Skips if the owner smoke account is not present.
+"""
+
+import os
+import uuid
+
+import pytest
+
+from peoplegraph.db import get_driver
+
+OWNER_EMAIL = os.getenv('PEOPLEGRAPH_TEST_OWNER_EMAIL', 'owner@peoplegraph.local')
+OWNER_PASSWORD = os.getenv('PEOPLEGRAPH_TEST_OWNER_PASSWORD', 'password123')
+
+
+@pytest.fixture
+def client():
+    from peoplegraph import create_app
+
+    app = create_app()
+    app.config['TESTING'] = True
+    with app.test_client() as test_client:
+        yield test_client
+
+
+def _json(response):
+    return response.get_json(silent=True) or {}
+
+
+def _auth(token, space_id=None):
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    return headers
+
+
+def _cleanup(space_id, emails):
+    driver = get_driver()
+    with driver.session() as session:
+        session.run('MATCH (a:Activity {spaceId: $id}) DETACH DELETE a', id=space_id)
+        session.run('MATCH (i:Invite {spaceId: $id}) DETACH DELETE i', id=space_id)
+        session.run('MATCH (p:Person {spaceId: $id}) DETACH DELETE p', id=space_id)
+        session.run(
+            """
+            MATCH (u:User)-[m:MEMBER_OF]->(s:Space {id: $id})
+            DELETE m
+            """,
+            id=space_id,
+        )
+        session.run('MATCH (s:Space {id: $id}) DETACH DELETE s', id=space_id)
+        for email in emails:
+            session.run(
+                """
+                MATCH (u:User {email: $email})
+                WHERE NOT (u)-[:MEMBER_OF]->(:Space)
+                DETACH DELETE u
+                """,
+                email=email,
+            )
+
+
+def test_register_requires_invite(client):
+    response = client.post(
+        '/api/auth/register',
+        json={
+            'email': f'scrum26-{uuid.uuid4().hex[:8]}@peoplegraph.test',
+            'password': 'password123',
+            'name': 'No Invite',
+        },
+    )
+    assert response.status_code == 400
+    body = _json(response)
+    assert body.get('success') is False
+    assert 'invite' in (body.get('error') or '').lower()
+
+
+def test_space_isolation_and_claim_rules(client):
+    login = client.post('/api/auth/login', json={'email': OWNER_EMAIL, 'password': OWNER_PASSWORD})
+    if login.status_code != 200 or not _json(login).get('success'):
+        pytest.skip('Owner smoke account is not available for integration tests')
+
+    owner_token = _json(login)['data']['token']
+    stamp = uuid.uuid4().hex[:8]
+    space_name = f'SCRUM26-test-{stamp}'
+    created = client.post(
+        '/api/spaces',
+        headers=_auth(owner_token),
+        json={'name': space_name, 'description': 'automated test space'},
+    )
+    assert created.status_code == 201, created.get_data(as_text=True)
+    space_id = _json(created)['data']['id']
+    emails = []
+
+    try:
+        person_a = client.post(
+            f'/api/spaces/{space_id}/persons',
+            headers=_auth(owner_token),
+            json={'name': f'Cousin A {stamp}', 'gender': 'female', 'nickName': 'A'},
+        )
+        person_b = client.post(
+            f'/api/spaces/{space_id}/persons',
+            headers=_auth(owner_token),
+            json={'name': f'Cousin B {stamp}', 'gender': 'male', 'nickName': 'B'},
+        )
+        assert person_a.status_code == 201
+        assert person_b.status_code == 201
+        id_a = _json(person_a)['data']['id']
+        id_b = _json(person_b)['data']['id']
+
+        invite_a = client.post(
+            f'/api/spaces/{space_id}/invites',
+            headers=_auth(owner_token),
+            json={'role': 'viewer', 'email': f'scrum26-a-{stamp}@peoplegraph.test'},
+        )
+        invite_b = client.post(
+            f'/api/spaces/{space_id}/invites',
+            headers=_auth(owner_token),
+            json={'role': 'viewer', 'email': f'scrum26-b-{stamp}@peoplegraph.test'},
+        )
+        assert invite_a.status_code == 201
+        assert invite_b.status_code == 201
+        token_a = _json(invite_a)['data']['token']
+        token_b = _json(invite_b)['data']['token']
+
+        email_a = f'scrum26-a-{stamp}@peoplegraph.test'
+        email_b = f'scrum26-b-{stamp}@peoplegraph.test'
+        emails = [email_a, email_b]
+
+        reg_a = client.post(
+            '/api/auth/register',
+            json={'email': email_a, 'password': 'password123', 'name': 'Tester A', 'inviteToken': token_a},
+        )
+        reg_b = client.post(
+            '/api/auth/register',
+            json={'email': email_b, 'password': 'password123', 'name': 'Tester B', 'inviteToken': token_b},
+        )
+        assert reg_a.status_code == 201, reg_a.get_data(as_text=True)
+        assert reg_b.status_code == 201, reg_b.get_data(as_text=True)
+        user_a = _json(reg_a)['data']['token']
+        user_b = _json(reg_b)['data']['token']
+
+        claim_a = client.post(
+            f'/api/spaces/{space_id}/profile/claim',
+            headers=_auth(user_a),
+            json={'personId': id_a},
+        )
+        assert claim_a.status_code == 200, claim_a.get_data(as_text=True)
+
+        steal = client.post(
+            f'/api/spaces/{space_id}/profile/claim',
+            headers=_auth(user_b),
+            json={'personId': id_a},
+        )
+        assert steal.status_code == 409
+
+        switch = client.post(
+            f'/api/spaces/{space_id}/profile/claim',
+            headers=_auth(user_a),
+            json={'personId': id_b},
+        )
+        assert switch.status_code == 200
+        mine = client.get(f'/api/spaces/{space_id}/profile/me', headers=_auth(user_a))
+        assert _json(mine)['data']['person']['id'] == id_b
+
+        owner_spaces = client.get('/api/spaces', headers=_auth(owner_token))
+        other = next((s for s in _json(owner_spaces).get('data') or [] if s['id'] != space_id), None)
+        if other:
+            isolated = client.get(f'/api/spaces/{other["id"]}/persons', headers=_auth(user_a))
+            assert isolated.status_code == 403
+    finally:
+        _cleanup(space_id, emails)

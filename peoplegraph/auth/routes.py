@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
+from peoplegraph.activity import record_activity
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.auth.jwt_utils import create_access_token
 from peoplegraph.auth.passwords import hash_password, verify_password
 from peoplegraph.config import Config
 from peoplegraph.db import get_driver
+from peoplegraph.email_service import send_invite_accepted_email
 from peoplegraph.serializers import format_space, format_user
 
 logger = logging.getLogger(__name__)
@@ -142,7 +144,9 @@ def register():
         invite = session.run(
             """
             MATCH (i:Invite {token: $token})
-            RETURN i
+            OPTIONAL MATCH (s:Space {id: i.spaceId})
+            OPTIONAL MATCH (creator:User {id: i.createdByUserId})
+            RETURN i, s.name AS spaceName, creator.email AS creatorEmail, creator.name AS creatorName
             """,
             token=invite_token,
         ).single()
@@ -212,17 +216,29 @@ def register():
             now=now,
         )
 
-        token = create_access_token(user_id, email)
-        return jsonify({
-            'success': True,
-            'data': {
-                'token': token,
-                'user': {'id': user_id, 'email': email, 'name': display_name},
-                'space': {'id': space_id, 'role': role},
-                'personId': None,
-                'needsClaim': True,
-            },
-        }), 201
+        space_name = invite['spaceName'] or 'Family'
+        creator_email = invite['creatorEmail']
+
+    record_activity(
+        space_id,
+        user_id,
+        'invite_accepted',
+        f'{display_name} joined {space_name}',
+    )
+    if creator_email:
+        send_invite_accepted_email(creator_email, space_name, display_name, email)
+
+    token = create_access_token(user_id, email)
+    return jsonify({
+        'success': True,
+        'data': {
+            'token': token,
+            'user': {'id': user_id, 'email': email, 'name': display_name},
+            'space': {'id': space_id, 'name': space_name, 'role': role},
+            'personId': None,
+            'needsClaim': True,
+        },
+    }), 201
 
 
 @auth_bp.route('/login', methods=['POST'])

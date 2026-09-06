@@ -2,8 +2,9 @@
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from peoplegraph.activity import record_activity
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.config import Config
 from peoplegraph.db import get_driver
@@ -69,6 +70,14 @@ def create_relationship(space_id):
             spaceId=space_id,
         ).single()
 
+    actor = g.user.get('name') or g.user.get('email') or 'A member'
+    rel_label = record['type'].replace('_', ' ').lower()
+    record_activity(
+        space_id,
+        g.user['id'],
+        'relationship_linked',
+        f'{actor} linked a {rel_label} relationship',
+    )
     return jsonify({
         'success': True,
         'data': {
@@ -125,6 +134,7 @@ def find_path(space_id, id1, id2):
             MATCH (p1:Person {id: $id1, spaceId: $spaceId})
             MATCH (p2:Person {id: $id2, spaceId: $spaceId})
             MATCH path = shortestPath((p1)-[*]-(p2))
+            WHERE ALL(n IN nodes(path) WHERE n:Person AND n.spaceId = $spaceId)
             WITH path, nodes(path) AS ns, relationships(path) AS rs
             RETURN
                 [n IN ns | n.id] AS nodeIds,

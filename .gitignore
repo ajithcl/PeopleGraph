@@ -7,11 +7,16 @@ modules.xml
 vcs.xml
 workspace.xml
 profiles_settings.xml
+# Local secrets — never track .env (use .env.example only)
 .env
+.env.local
+.env.*.local
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
 .DS_Store
 frontend/node_modules/
 frontend/dist/
+backups/

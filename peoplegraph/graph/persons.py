@@ -3,8 +3,9 @@
 import logging
 import uuid
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from peoplegraph.activity import record_activity
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.config import Config
 from peoplegraph.db import get_driver
@@ -118,7 +119,10 @@ def create_person(space_id):
             photoUrl=data.get('photoUrl', ''),
         ).single()
 
-    return jsonify({'success': True, 'data': format_person(record['p'])}), 201
+    person = format_person(record['p'])
+    actor = g.user.get('name') or g.user.get('email') or 'A member'
+    record_activity(space_id, g.user['id'], 'person_added', f'{actor} added {person.get("name") or "a relative"}')
+    return jsonify({'success': True, 'data': person}), 201
 
 
 @persons_bp.route('/<person_id>', methods=['PUT'])
@@ -178,10 +182,29 @@ def delete_person(space_id, person_id):
     return jsonify({'success': True, 'message': 'Person deleted successfully'})
 
 
+def _can_edit_person_photo(space_id, person_id):
+    if g.space_role in Config.WRITE_ROLES:
+        return True
+    driver = get_driver()
+    with driver.session() as session:
+        record = session.run(
+            """
+            MATCH (u:User {id: $userId})-[:REPRESENTS]->(p:Person {id: $personId, spaceId: $spaceId})
+            RETURN p
+            """,
+            userId=g.user['id'],
+            personId=person_id,
+            spaceId=space_id,
+        ).single()
+        return bool(record)
+
+
 @persons_bp.route('/<person_id>/upload-photo', methods=['POST'])
 @require_auth
-@require_space_access('editor')
+@require_space_access('viewer')
 def upload_photo(space_id, person_id):
+    if not _can_edit_person_photo(space_id, person_id):
+        return jsonify({'success': False, 'error': 'You can only upload a photo for your own profile'}), 403
     node, old_url = _person_photo_url(space_id, person_id)
     if not node:
         return jsonify({'success': False, 'error': 'Person not found'}), 404

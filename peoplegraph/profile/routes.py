@@ -5,14 +5,34 @@ import uuid
 
 from flask import Blueprint, g, jsonify, request
 
+from peoplegraph.activity import record_activity, space_owner_contacts
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.db import get_driver
+from peoplegraph.email_service import send_claim_notice_email
 from peoplegraph.serializers import format_person
 from peoplegraph.tenancy import person_in_space, require_space_access
 
 logger = logging.getLogger(__name__)
 
 profile_bp = Blueprint('profile', __name__, url_prefix='/api/spaces/<space_id>/profile')
+
+
+def _space_name(space_id):
+    driver = get_driver()
+    with driver.session() as session:
+        record = session.run(
+            'MATCH (s:Space {id: $spaceId}) RETURN s.name AS name',
+            spaceId=space_id,
+        ).single()
+        return (record['name'] if record else None) or 'Family'
+
+
+def _after_claim(space_id, person_name):
+    claimant = g.user.get('name') or g.user.get('email') or 'A relative'
+    record_activity(space_id, g.user['id'], 'claim', f'{claimant} is listed as {person_name}')
+    space_name = _space_name(space_id)
+    for owner in space_owner_contacts(space_id, exclude_user_id=g.user['id']):
+        send_claim_notice_email(owner['email'], space_name, claimant, person_name)
 
 
 def _claimed_person(session, user_id, space_id):
@@ -73,7 +93,9 @@ def list_claimable(space_id):
                 WHERE other.id <> $userId
                 WITH p, other
                 WHERE other IS NULL
-                RETURN p
+                OPTIONAL MATCH (p)-[]-(n:Person {spaceId: $spaceId})
+                WITH p, collect(DISTINCT n.name)[0..2] AS relatedNames
+                RETURN p, relatedNames
                 ORDER BY p.name
                 LIMIT 30
                 """,
@@ -89,14 +111,20 @@ def list_claimable(space_id):
                 WHERE other.id <> $userId
                 WITH p, other
                 WHERE other IS NULL
-                RETURN p
+                OPTIONAL MATCH (p)-[]-(n:Person {spaceId: $spaceId})
+                WITH p, collect(DISTINCT n.name)[0..2] AS relatedNames
+                RETURN p, relatedNames
                 ORDER BY p.name
                 LIMIT 50
                 """,
                 spaceId=space_id,
                 userId=g.user['id'],
             )
-        persons = [format_person(r['p']) for r in result]
+        persons = []
+        for row in result:
+            payload = format_person(row['p'])
+            payload['relatedNames'] = [n for n in (row['relatedNames'] or []) if n]
+            persons.append(payload)
         mine = _claimed_person(session, g.user['id'], space_id)
         claimed = format_person(mine) if mine else None
 
@@ -137,7 +165,7 @@ def claim_person(space_id):
         if taken:
             return jsonify({
                 'success': False,
-                'error': 'This person is already claimed by another account',
+                'error': 'Someone else already claimed this person. Pick another listing, or add yourself as new.',
             }), 409
 
         _clear_space_claims(session, g.user['id'], space_id)
@@ -153,9 +181,11 @@ def claim_person(space_id):
             spaceId=space_id,
         ).single()
 
+    person = format_person(record['p'])
+    _after_claim(space_id, person.get('name') or 'a family member')
     return jsonify({
         'success': True,
-        'data': format_person(record['p']),
+        'data': person,
         'message': 'Profile claimed. This person is now you in this space.',
     })
 
@@ -203,9 +233,11 @@ def claim_new_person(space_id):
             dateOfBirth=data.get('dateOfBirth', ''),
         ).single()
 
+    person = format_person(record['p'])
+    _after_claim(space_id, person.get('name') or 'a family member')
     return jsonify({
         'success': True,
-        'data': format_person(record['p']),
+        'data': person,
         'message': 'Created and claimed your profile on the graph.',
     }), 201
 
