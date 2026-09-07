@@ -87,6 +87,8 @@ curl -s http://localhost:8010/api/spaces/$SPACE/persons \
 | GET/PUT/DELETE | `/api/spaces/<id>/persons/<personId>` | viewer / editor | |
 | POST/DELETE | `.../persons/<id>/upload-photo` etc. | editor | |
 | GET/POST | `/api/spaces/<id>/relationships` | viewer / editor | |
+| GET/POST | `/api/spaces/<id>/relationship-tags` | viewer / editor | Catalog of kinship types |
+| PATCH/DELETE | `/api/spaces/<id>/relationship-tags/<tagId>` | editor | Custom tags; built-ins cannot be deleted |
 | GET | `/api/spaces/<id>/path/<a>/<b>` | viewer | Shortest path |
 | GET | `/api/spaces/<id>/stats` | viewer | |
 

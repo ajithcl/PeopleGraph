@@ -33,8 +33,11 @@ export default function PersonProfile({
   allPersons,
   selfPersonId,
   onHowRelated,
+  relTags = [],
 }) {
   if (!person) return null
+
+  const tagLabel = (type) => relTags.find((t) => t.key === type)?.label || type.replace(/_/g, ' ')
 
   const calculateAge = (dob) => {
     if (!dob) return 'Unknown'
@@ -55,7 +58,7 @@ export default function PersonProfile({
 
   const handleDeleteRel = async (rel) => {
     if (!onDeleteRelationship) return
-    if (!confirm(`Remove ${rel.type.replace(/_/g, ' ')} link with ${rel.person?.name || 'this person'}?`)) return
+    if (!confirm(`Remove ${tagLabel(rel.type)} link with ${rel.person?.name || 'this person'}?`)) return
     await onDeleteRelationship({ fromId: rel.fromId, toId: rel.toId, type: rel.type })
   }
 
@@ -159,7 +162,7 @@ export default function PersonProfile({
                       <PhotoAvatar person={rel.person} size="sm" />
                       <div className="min-w-0">
                         <span className="font-semibold text-gray-800">{rel.person?.name}</span>
-                        <span className="text-sm text-gray-500 ml-2">({rel.type.replace(/_/g, ' ')})</span>
+                        <span className="text-sm text-gray-500 ml-2">({tagLabel(rel.type)})</span>
                       </div>
                     </div>
                     {canEdit && onDeleteRelationship && (

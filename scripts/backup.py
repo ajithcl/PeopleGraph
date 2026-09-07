@@ -76,6 +76,7 @@ def _dump(session):
         )
     ]
     invites = [dict(r['i']) for r in session.run('MATCH (i:Invite) RETURN i')]
+    rel_tags = [dict(r['t']) for r in session.run('MATCH (t:RelTag) RETURN t')]
     return {
         'spaces': spaces,
         'users': users,
@@ -84,6 +85,7 @@ def _dump(session):
         'relationships': relationships,
         'claims': claims,
         'invites': invites,
+        'relTags': rel_tags,
     }
 
 

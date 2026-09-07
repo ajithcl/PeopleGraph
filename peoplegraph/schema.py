@@ -27,6 +27,10 @@ CONSTRAINTS = [
     CREATE CONSTRAINT invite_token IF NOT EXISTS
     FOR (i:Invite) REQUIRE i.token IS UNIQUE
     """,
+    """
+    CREATE CONSTRAINT reltag_id IF NOT EXISTS
+    FOR (t:RelTag) REQUIRE t.id IS UNIQUE
+    """,
 ]
 
 INDEXES = [
@@ -41,6 +45,10 @@ INDEXES = [
     """
     CREATE INDEX activity_space IF NOT EXISTS
     FOR (a:Activity) ON (a.spaceId)
+    """,
+    """
+    CREATE INDEX reltag_space IF NOT EXISTS
+    FOR (t:RelTag) ON (t.spaceId)
     """,
 ]
 

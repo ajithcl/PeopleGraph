@@ -10,6 +10,7 @@ import InviteMembersModal from './InviteMembersModal'
 import PathFinder from './PathFinder'
 import PersonProfile from './PersonProfile'
 import PhotoAvatar from './PhotoAvatar'
+import RelationshipTagsPage from './RelationshipTagsPage'
 import RootPersonSelector from './RootPersonSelector'
 
 export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
@@ -33,6 +34,8 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
   const [error, setError] = useState(null)
   const [rootPersonId, setRootPersonId] = useState(session.personId || null)
   const [generations, setGenerations] = useState(2)
+  const [mainView, setMainView] = useState('tree')
+  const [relTags, setRelTags] = useState([])
 
   const canEdit = session.role === 'owner' || session.role === 'editor'
   const spaceName = (session.spaces || []).find((s) => s.id === session.spaceId)?.name || 'Kinship space'
@@ -41,14 +44,16 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
     setLoading(true)
     setError(null)
     try {
-      const [personsData, relationshipsData, statsData] = await Promise.all([
+      const [personsData, relationshipsData, statsData, tagsData] = await Promise.all([
         api.getAllPersons(),
         api.getRelationships(),
         api.getStats(),
+        api.getRelationshipTags().catch(() => []),
       ])
       setPersons(personsData)
       setRelationships(relationshipsData)
       setStats(statsData)
+      setRelTags(tagsData)
       setRootPersonId((prev) => prev || session.personId || personsData[0]?.id || null)
     } catch (err) {
       if (err.status === 401) {
@@ -254,6 +259,18 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
                   </button>
                 </>
               )}
+              <button
+                type="button"
+                onClick={() => setMainView((v) => (v === 'tags' ? 'tree' : 'tags'))}
+                className={`px-3 sm:px-4 py-3 rounded-xl font-semibold ${
+                  mainView === 'tags'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <i className="fas fa-tags mr-2" />
+                <span className="hidden sm:inline">Tags</span>
+              </button>
               <button type="button" onClick={() => setShowAccount(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-3 rounded-xl font-semibold hover:bg-slate-50 text-sm">
                 <i className="fas fa-user-cog mr-2" />
                 <span className="hidden sm:inline">Account</span>
@@ -265,6 +282,8 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
             </div>
           </div>
 
+          {mainView === 'tree' && (
+          <>
           <div className="relative">
             <input
               type="text"
@@ -293,9 +312,27 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
               )}
             </div>
           )}
+          </>
+          )}
         </div>
       </div>
 
+      {mainView === 'tags' ? (
+        <div className="max-w-7xl mx-auto mb-6">
+          <RelationshipTagsPage
+            canEdit={canEdit}
+            onBack={() => setMainView('tree')}
+            onChanged={async () => {
+              try {
+                setRelTags(await api.getRelationshipTags())
+              } catch {
+                /* keep existing tags */
+              }
+            }}
+          />
+        </div>
+      ) : (
+      <>
       <div className="max-w-7xl mx-auto mb-6 space-y-4">
         <PathFinder persons={persons} defaultFromId={session.personId} onFindPath={handleFindPath} />
         {pathError && <p className="text-sm text-red-600 bg-white rounded-xl p-3">{pathError}</p>}
@@ -399,6 +436,23 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
         <ActivityFeed refreshKey={`${persons.length}-${relationships.length}`} />
       </div>
 
+      <div className="max-w-7xl mx-auto mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+        {[
+          { icon: 'fa-users', color: 'text-indigo-600', value: stats.totalPersons || 0, label: 'Total Members' },
+          { icon: 'fa-mars', color: 'text-blue-500', value: stats.maleCount || 0, label: 'Male Members' },
+          { icon: 'fa-venus', color: 'text-pink-500', value: stats.femaleCount || 0, label: 'Female Members' },
+          { icon: 'fa-link', color: 'text-emerald-500', value: stats.totalRelationships || 0, label: 'Relationships' },
+        ].map((s) => (
+          <div key={s.label} className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-4 sm:p-6 text-center">
+            <i className={`fas ${s.icon} text-2xl sm:text-4xl ${s.color} mb-2`} />
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{s.value}</p>
+            <p className="text-slate-500 text-xs sm:text-sm font-medium">{s.label}</p>
+          </div>
+        ))}
+      </div>
+      </>
+      )}
+
       {showProfile && (
         <PersonProfile
           person={selectedPerson}
@@ -407,6 +461,7 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
           canEdit={canEdit}
           selfPersonId={session.personId}
           onHowRelated={session.personId ? handleHowRelated : null}
+          relTags={relTags}
           onDeleteRelationship={
             canEdit
               ? async (rel) => {
@@ -425,7 +480,14 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
       )}
       {showEditModal && canEdit && <EditPersonModal person={selectedPerson} onClose={() => setShowEditModal(false)} onSave={handleSave} />}
       {showAddModal && canEdit && <AddPersonModal onClose={() => setShowAddModal(false)} onSave={handleAddPerson} />}
-      {showAddRelationshipModal && canEdit && <AddRelationshipModal persons={persons} onClose={() => setShowAddRelationshipModal(false)} onSave={loadData} />}
+      {showAddRelationshipModal && canEdit && (
+        <AddRelationshipModal
+          persons={persons}
+          tags={relTags}
+          onClose={() => setShowAddRelationshipModal(false)}
+          onSave={loadData}
+        />
+      )}
       {showInviteModal && <InviteMembersModal role={session.role} onClose={() => setShowInviteModal(false)} />}
       {showAccount && (
         <AccountSettingsModal
@@ -455,21 +517,6 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
           </div>
         </div>
       )}
-
-      <div className="max-w-7xl mx-auto mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
-        {[
-          { icon: 'fa-users', color: 'text-indigo-600', value: stats.totalPersons || 0, label: 'Total Members' },
-          { icon: 'fa-mars', color: 'text-blue-500', value: stats.maleCount || 0, label: 'Male Members' },
-          { icon: 'fa-venus', color: 'text-pink-500', value: stats.femaleCount || 0, label: 'Female Members' },
-          { icon: 'fa-link', color: 'text-emerald-500', value: stats.totalRelationships || 0, label: 'Relationships' },
-        ].map((s) => (
-          <div key={s.label} className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-4 sm:p-6 text-center">
-            <i className={`fas ${s.icon} text-2xl sm:text-4xl ${s.color} mb-2`} />
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{s.value}</p>
-            <p className="text-slate-500 text-xs sm:text-sm font-medium">{s.label}</p>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

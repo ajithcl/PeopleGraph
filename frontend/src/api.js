@@ -202,6 +202,35 @@ class ApiService {
     })
   }
 
+  getRelationshipTags() {
+    return this.request(this.spacePath('/relationship-tags'), { headers: this.authHeaders(false) }).then(
+      (d) => d.data || [],
+    )
+  }
+
+  createRelationshipTag(payload) {
+    return this.request(this.spacePath('/relationship-tags'), {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload),
+    })
+  }
+
+  updateRelationshipTag(tagId, payload) {
+    return this.request(this.spacePath(`/relationship-tags/${tagId}`), {
+      method: 'PATCH',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload),
+    })
+  }
+
+  deleteRelationshipTag(tagId) {
+    return this.request(this.spacePath(`/relationship-tags/${tagId}`), {
+      method: 'DELETE',
+      headers: this.authHeaders(false),
+    })
+  }
+
   createRelationship(relationshipData) {
     return this.request(this.spacePath('/relationships'), {
       method: 'POST',

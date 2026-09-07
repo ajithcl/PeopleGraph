@@ -39,6 +39,7 @@ def _cleanup(space_id, emails):
     with driver.session() as session:
         session.run('MATCH (a:Activity {spaceId: $id}) DETACH DELETE a', id=space_id)
         session.run('MATCH (i:Invite {spaceId: $id}) DETACH DELETE i', id=space_id)
+        session.run('MATCH (t:RelTag {spaceId: $id}) DETACH DELETE t', id=space_id)
         session.run('MATCH (p:Person {spaceId: $id}) DETACH DELETE p', id=space_id)
         session.run(
             """
@@ -240,4 +241,91 @@ def test_change_account_credentials(client):
         assert _json(new_login)['success'] is True
     finally:
         _cleanup(space_id, [email, new_email])
+
+
+def test_relationship_tag_catalog(client):
+    login = client.post('/api/auth/login', json={'email': OWNER_EMAIL, 'password': OWNER_PASSWORD})
+    if login.status_code != 200 or not _json(login).get('success'):
+        pytest.skip('Owner smoke account is not available for integration tests')
+
+    owner_token = _json(login)['data']['token']
+    stamp = uuid.uuid4().hex[:8]
+    created = client.post(
+        '/api/spaces',
+        headers=_auth(owner_token),
+        json={'name': f'SCRUM-reltags-{stamp}'},
+    )
+    assert created.status_code == 201
+    space_id = _json(created)['data']['id']
+    headers = _auth(owner_token)
+
+    try:
+        listed = client.get(f'/api/spaces/{space_id}/relationship-tags', headers=headers)
+        assert listed.status_code == 200
+        keys = {t['key'] for t in _json(listed).get('data') or []}
+        assert 'HAS_CHILD' in keys
+        assert 'FRIEND_OF' in keys
+
+        created_tag = client.post(
+            f'/api/spaces/{space_id}/relationship-tags',
+            headers=headers,
+            json={
+                'label': 'Cousin',
+                'phraseForward': '{a} is a cousin of {b}',
+                'phraseReverse': '{a} is a cousin of {b}',
+            },
+        )
+        assert created_tag.status_code == 201, created_tag.get_data(as_text=True)
+        tag = _json(created_tag)['data']
+        assert tag['key'] == 'COUSIN'
+        assert tag['builtIn'] is False
+
+        person_a = client.post(
+            f'/api/spaces/{space_id}/persons',
+            headers=headers,
+            json={'name': f'Tag A {stamp}', 'gender': 'female'},
+        )
+        person_b = client.post(
+            f'/api/spaces/{space_id}/persons',
+            headers=headers,
+            json={'name': f'Tag B {stamp}', 'gender': 'male'},
+        )
+        assert person_a.status_code == 201
+        assert person_b.status_code == 201
+        id_a = _json(person_a)['data']['id']
+        id_b = _json(person_b)['data']['id']
+
+        unknown = client.post(
+            f'/api/spaces/{space_id}/relationships',
+            headers=headers,
+            json={'fromId': id_a, 'toId': id_b, 'type': 'NOT_A_TAG'},
+        )
+        assert unknown.status_code == 400
+
+        linked = client.post(
+            f'/api/spaces/{space_id}/relationships',
+            headers=headers,
+            json={'fromId': id_a, 'toId': id_b, 'type': 'COUSIN'},
+        )
+        assert linked.status_code == 201, linked.get_data(as_text=True)
+
+        in_use = client.delete(f'/api/spaces/{space_id}/relationship-tags/{tag["id"]}', headers=headers)
+        assert in_use.status_code == 409
+
+        client.delete(
+            f'/api/spaces/{space_id}/relationships',
+            headers=headers,
+            json={'fromId': id_a, 'toId': id_b, 'type': 'COUSIN'},
+        )
+        unused = client.post(
+            f'/api/spaces/{space_id}/relationship-tags',
+            headers=headers,
+            json={'label': 'Godparent'},
+        )
+        assert unused.status_code == 201
+        god_id = _json(unused)['data']['id']
+        deleted = client.delete(f'/api/spaces/{space_id}/relationship-tags/{god_id}', headers=headers)
+        assert deleted.status_code == 200
+    finally:
+        _cleanup(space_id, [])
 

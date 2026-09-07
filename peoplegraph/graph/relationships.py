@@ -6,9 +6,9 @@ from flask import Blueprint, g, jsonify, request
 
 from peoplegraph.activity import record_activity
 from peoplegraph.auth.decorators import require_auth
-from peoplegraph.config import Config
 from peoplegraph.db import get_driver
 from peoplegraph.graph.path_explain import build_path_explanation
+from peoplegraph.graph.rel_tags import catalog_keys, is_safe_rel_key, phrases_for_space
 from peoplegraph.serializers import format_person
 from peoplegraph.tenancy import person_in_space, require_space_access
 
@@ -46,23 +46,26 @@ def create_relationship(space_id):
         return jsonify({'success': False, 'error': 'fromId, toId, and type are required'}), 400
 
     rel_type = data['type']
-    if rel_type not in Config.VALID_RELATIONSHIP_TYPES:
-        return jsonify({
-            'success': False,
-            'error': f'Invalid relationship type. Must be one of: {", ".join(Config.VALID_RELATIONSHIP_TYPES)}',
-        }), 400
+    if not is_safe_rel_key(rel_type):
+        return jsonify({'success': False, 'error': 'Invalid relationship type'}), 400
 
     if not person_in_space(data['fromId'], space_id) or not person_in_space(data['toId'], space_id):
         return jsonify({'success': False, 'error': 'One or both persons not found in this space'}), 404
 
-    query = f"""
-        MATCH (p1:Person {{id: $fromId, spaceId: $spaceId}})
-        MATCH (p2:Person {{id: $toId, spaceId: $spaceId}})
-        CREATE (p1)-[r:{rel_type}]->(p2)
-        RETURN p1.id AS fromId, p2.id AS toId, type(r) AS type
-    """
     driver = get_driver()
     with driver.session() as session:
+        allowed = catalog_keys(session, space_id)
+        if rel_type not in allowed:
+            return jsonify({
+                'success': False,
+                'error': 'Unknown relationship tag. Add it under Tags first.',
+            }), 400
+        query = f"""
+            MATCH (p1:Person {{id: $fromId, spaceId: $spaceId}})
+            MATCH (p2:Person {{id: $toId, spaceId: $spaceId}})
+            CREATE (p1)-[r:{rel_type}]->(p2)
+            RETURN p1.id AS fromId, p2.id AS toId, type(r) AS type
+        """
         record = session.run(
             query,
             fromId=data['fromId'],
@@ -97,7 +100,7 @@ def delete_relationship(space_id):
         return jsonify({'success': False, 'error': 'fromId, toId, and type are required'}), 400
 
     rel_type = data['type']
-    if rel_type not in Config.VALID_RELATIONSHIP_TYPES:
+    if not is_safe_rel_key(rel_type):
         return jsonify({'success': False, 'error': 'Invalid relationship type'}), 400
 
     query = f"""
@@ -151,6 +154,7 @@ def find_path(space_id, id1, id2):
         if not record:
             return jsonify({'success': True, 'data': None, 'message': 'No path found'})
 
+        phrases = phrases_for_space(session, space_id)
         node_ids = record['nodeIds']
         node_names = record['nodeNames']
         rel_types = record['relationshipTypes']
@@ -170,7 +174,7 @@ def find_path(space_id, id1, id2):
                 'outgoing': outgoing,
             })
 
-        explanation = build_path_explanation(steps)
+        explanation = build_path_explanation(steps, phrases=phrases)
 
         return jsonify({
             'success': True,

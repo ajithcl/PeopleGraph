@@ -1,24 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
 import PhotoAvatar from './PhotoAvatar'
 
-const RELATIONSHIP_TYPES = [
-  { value: 'HAS_CHILD', label: 'Has Child' },
-  { value: 'PARENT_OF', label: 'Parent Of' },
-  { value: 'SPOUSE_OF', label: 'Spouse Of' },
-  { value: 'SIBLING_OF', label: 'Sibling' },
-  { value: 'FRIEND_OF', label: 'Friend' },
-]
-
-export default function AddRelationshipModal({ persons, onClose, onSave }) {
+export default function AddRelationshipModal({ persons, tags = [], onClose, onSave }) {
   const [fromPersonId, setFromPersonId] = useState('')
   const [toPersonId, setToPersonId] = useState('')
-  const [relationshipType, setRelationshipType] = useState('HAS_CHILD')
+  const [relationshipType, setRelationshipType] = useState('')
   const [saving, setSaving] = useState(false)
   const [fromSearchQuery, setFromSearchQuery] = useState('')
   const [toSearchQuery, setToSearchQuery] = useState('')
   const [showFromDropdown, setShowFromDropdown] = useState(false)
   const [showToDropdown, setShowToDropdown] = useState(false)
+  const [catalog, setCatalog] = useState(tags)
+
+  useEffect(() => {
+    if (tags.length) {
+      setCatalog(tags)
+      return
+    }
+    api.getRelationshipTags().then((data) => setCatalog(data || [])).catch(() => setCatalog([]))
+  }, [tags])
+
+  useEffect(() => {
+    if (!relationshipType && catalog.length) {
+      setRelationshipType(catalog.find((t) => t.key === 'HAS_CHILD')?.key || catalog[0].key)
+    }
+  }, [catalog, relationshipType])
 
   const filterPersons = (q, excludeId) => {
     const base = excludeId ? persons.filter((p) => p.id !== excludeId) : persons
@@ -29,7 +36,7 @@ export default function AddRelationshipModal({ persons, onClose, onSave }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!fromPersonId || !toPersonId) {
+    if (!fromPersonId || !toPersonId || !relationshipType) {
       alert('Please fill in all fields')
       return
     }
@@ -98,8 +105,8 @@ export default function AddRelationshipModal({ persons, onClose, onSave }) {
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">Relationship Type</label>
             <select value={relationshipType} onChange={(e) => setRelationshipType(e.target.value)} className="w-full p-3 border-2 border-slate-200 rounded-lg">
-              {RELATIONSHIP_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
+              {catalog.map((t) => (
+                <option key={t.key} value={t.key}>
                   {t.label}
                 </option>
               ))}
@@ -142,7 +149,7 @@ export default function AddRelationshipModal({ persons, onClose, onSave }) {
             <button type="button" onClick={onClose} disabled={saving} className="flex-1 px-4 py-3 text-slate-700 font-semibold border-2 border-slate-200 rounded-lg">
               Cancel
             </button>
-            <button type="submit" disabled={saving || !fromPersonId || !toPersonId} className="flex-1 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg disabled:bg-gray-300">
+            <button type="submit" disabled={saving || !fromPersonId || !toPersonId || !relationshipType} className="flex-1 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg disabled:bg-gray-300">
               {saving ? 'Saving…' : 'Save Relationship'}
             </button>
           </div>

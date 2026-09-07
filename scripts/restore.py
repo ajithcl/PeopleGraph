@@ -144,6 +144,26 @@ def main():
                 usedAt=inv.get('usedAt'),
                 usedByUserId=inv.get('usedByUserId'),
             )
+        for t in graph.get('relTags') or []:
+            if not t.get('id') or not t.get('spaceId'):
+                continue
+            session.run(
+                """
+                MATCH (s:Space {id: $spaceId})
+                MERGE (x:RelTag {id: $id})
+                SET x.spaceId = $spaceId, x.key = $key, x.label = $label,
+                    x.builtIn = $builtIn, x.phraseForward = $phraseForward,
+                    x.phraseReverse = $phraseReverse
+                MERGE (s)-[:HAS_REL_TAG]->(x)
+                """,
+                id=t.get('id') or '',
+                spaceId=t.get('spaceId') or '',
+                key=t.get('key') or '',
+                label=t.get('label') or '',
+                builtIn=bool(t.get('builtIn')),
+                phraseForward=t.get('phraseForward') or '',
+                phraseReverse=t.get('phraseReverse') or '',
+            )
 
     close_driver()
 

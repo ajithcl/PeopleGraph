@@ -28,14 +28,31 @@ REVERSE_PHRASES = {
 }
 
 
-def explain_hop(from_name, to_name, rel_type, outgoing):
+def apply_phrase(template, from_name, to_name, rel_type, label=''):
+    rel = (rel_type or '').replace('_', ' ').lower()
+    shown = label or rel
+    return (
+        (template or '{a} is connected to {b} ({label})')
+        .replace('{a}', from_name or '')
+        .replace('{b}', to_name or '')
+        .replace('{rel}', rel)
+        .replace('{label}', shown)
+    )
+
+
+def explain_hop(from_name, to_name, rel_type, outgoing, phrases=None):
     """Explain one hop. outgoing=True means edge was stored from_name -> to_name."""
+    tag = (phrases or {}).get(rel_type) or {}
+    label = tag.get('label') or (rel_type or '').replace('_', ' ').lower()
+    custom = tag.get('forward') if outgoing else tag.get('reverse')
+    if custom:
+        return apply_phrase(custom, from_name, to_name, rel_type, label)
     table = FORWARD_PHRASES if outgoing else REVERSE_PHRASES
-    template = table.get(rel_type) or '{a} is connected to {b} ({rel})'
-    return template.format(a=from_name, b=to_name, rel=rel_type.replace('_', ' ').lower())
+    template = table.get(rel_type) or '{a} is connected to {b} ({label})'
+    return apply_phrase(template, from_name, to_name, rel_type, label)
 
 
-def build_path_explanation(steps):
+def build_path_explanation(steps, phrases=None):
     """
     steps: list of dicts with keys:
       fromName, toName, type, outgoing (bool)
@@ -49,7 +66,7 @@ def build_path_explanation(steps):
         }
 
     hops = [
-        explain_hop(s['fromName'], s['toName'], s['type'], s['outgoing'])
+        explain_hop(s['fromName'], s['toName'], s['type'], s['outgoing'], phrases=phrases)
         for s in steps
     ]
     start = steps[0]['fromName']

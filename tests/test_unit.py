@@ -64,6 +64,29 @@ def test_facebook_and_instagram_urls():
     assert linkedin_profile_url('https://evil.example/x') == ''
 
 
+def test_rel_tag_key_from_label():
+    from peoplegraph.graph.rel_tags import is_safe_rel_key, label_to_key
+
+    assert label_to_key('Godparent') == 'GODPARENT'
+    assert label_to_key('cousin of') == 'COUSIN_OF'
+    assert is_safe_rel_key('COUSIN_OF')
+    assert not is_safe_rel_key('cousin')
+    assert not is_safe_rel_key('HAS_CHILD; DROP')
+    assert not is_safe_rel_key('MATCH')
+    assert not is_safe_rel_key('')
+
+
+def test_path_explain_uses_custom_phrases():
+    hop = explain_hop(
+        'Ajith',
+        'Ravi',
+        'COUSIN',
+        True,
+        phrases={'COUSIN': {'forward': '{a} is a cousin of {b}', 'reverse': '{a} is a cousin of {b}', 'label': 'Cousin'}},
+    )
+    assert hop == 'Ajith is a cousin of Ravi'
+
+
 def test_dummy_smtp_not_configured(monkeypatch):
     from peoplegraph import config as cfg
 

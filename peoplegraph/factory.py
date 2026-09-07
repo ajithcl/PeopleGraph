@@ -11,7 +11,7 @@ from peoplegraph.activity import activity_bp
 from peoplegraph.auth import auth_bp
 from peoplegraph.config import Config
 from peoplegraph.db import close_driver, init_driver, verify_connection
-from peoplegraph.graph import graph_bp, persons_bp
+from peoplegraph.graph import graph_bp, persons_bp, rel_tags_bp
 from peoplegraph.invites import invites_bp, public_invites_bp
 from peoplegraph.profile import profile_bp
 from peoplegraph.schema import ensure_schema
@@ -50,6 +50,7 @@ def create_app():
     app.register_blueprint(public_invites_bp)
     app.register_blueprint(persons_bp)
     app.register_blueprint(graph_bp)
+    app.register_blueprint(rel_tags_bp)
     app.register_blueprint(profile_bp)
     app.register_blueprint(activity_bp)
 
@@ -146,6 +147,7 @@ def create_app():
                 'invite_preview': 'GET /api/invites/<token>',
                 'persons': 'GET|POST /api/spaces/<spaceId>/persons',
                 'relationships': 'GET|POST /api/spaces/<spaceId>/relationships',
+                'relationship_tags': 'GET|POST /api/spaces/<spaceId>/relationship-tags',
                 'path': 'GET /api/spaces/<spaceId>/path/<id1>/<id2>',
                 'stats': 'GET /api/spaces/<spaceId>/stats',
                 'profile': 'GET|POST /api/spaces/<spaceId>/profile/...',
