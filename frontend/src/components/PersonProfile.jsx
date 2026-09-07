@@ -16,7 +16,7 @@ function ContactLink({ href, icon, label, children }) {
     )
   }
   return (
-    <p className="flex items-center gap-2 text-gray-800 font-semibold">
+    <p className="flex items-center gap-2 text-slate-800 font-semibold">
       <i className={`fas ${icon} w-5 text-center text-slate-400`} />
       {children}
     </p>
@@ -67,7 +67,7 @@ export default function PersonProfile({
   return (
     <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
       <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
-        <div className={`p-6 ${person.gender === 'male' ? 'bg-blue-50/80' : 'bg-pink-50/80'}`}>
+        <div className="p-6 bg-slate-50 border-b border-slate-100">
           <div className="flex justify-between items-start">
             <div className="flex items-center space-x-4 min-w-0">
               <PhotoAvatar person={person} size="xl" />
@@ -87,36 +87,32 @@ export default function PersonProfile({
             <button
               type="button"
               onClick={() => onHowRelated(person)}
-              className="w-full bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700"
+              className="w-full btn-primary bg-indigo-600 text-white py-3 rounded-xl font-semibold"
             >
-              <i className="fas fa-route mr-2" />
               How am I related?
             </button>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-500 mb-1">Date of Birth</p>
-              <p className="text-lg font-semibold text-gray-800">
+            <div className="bg-slate-50 p-4 rounded-xl">
+              <p className="text-sm text-slate-500 mb-1">Date of Birth</p>
+              <p className="text-lg font-semibold text-slate-800">
                 {person.dateOfBirth ? new Date(person.dateOfBirth).toLocaleDateString() : 'Unknown'}
               </p>
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-500 mb-1">Age</p>
-              <p className="text-lg font-semibold text-gray-800">{calculateAge(person.dateOfBirth)} years</p>
+            <div className="bg-slate-50 p-4 rounded-xl">
+              <p className="text-sm text-slate-500 mb-1">Age</p>
+              <p className="text-lg font-semibold text-slate-800">{calculateAge(person.dateOfBirth)} years</p>
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-500 mb-1">Gender</p>
-              <p className="text-lg font-semibold text-gray-800 capitalize">{person.gender}</p>
+            <div className="bg-slate-50 p-4 rounded-xl">
+              <p className="text-sm text-slate-500 mb-1">Gender</p>
+              <p className="text-lg font-semibold text-slate-800 capitalize">{person.gender}</p>
             </div>
           </div>
 
           {(person.phone || person.email || person.facebookUrl || person.instagramUrl || person.linkedinUrl || person.notes) && (
             <div>
-              <h3 className="text-xl font-bold text-gray-800 mb-3">
-                <i className="fas fa-address-card mr-2 text-indigo-600" />
-                Contact
-              </h3>
+              <h3 className="text-base font-semibold text-slate-800 mb-3">Contact</h3>
               <div className="space-y-3 bg-slate-50 rounded-xl p-4">
                 {person.phone && (
                   <a href={`tel:${person.phone}`} className="flex items-center gap-2 text-indigo-700 hover:underline font-semibold">
@@ -141,8 +137,8 @@ export default function PersonProfile({
                 )}
                 {person.notes && (
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Notes</p>
-                    <p className="text-gray-800 whitespace-pre-wrap">{person.notes}</p>
+                    <p className="text-sm text-slate-500 mb-1">Notes</p>
+                    <p className="text-slate-800 whitespace-pre-wrap">{person.notes}</p>
                   </div>
                 )}
               </div>
@@ -150,10 +146,7 @@ export default function PersonProfile({
           )}
 
           <div>
-            <h3 className="text-xl font-bold text-gray-800 mb-3">
-              <i className="fas fa-users mr-2 text-indigo-600" />
-              Relationships
-            </h3>
+            <h3 className="text-base font-semibold text-slate-800 mb-3">Relationships</h3>
             <div className="space-y-2">
               {rels.length > 0 ? (
                 rels.map((rel, idx) => (
@@ -161,8 +154,8 @@ export default function PersonProfile({
                     <div className="flex items-center space-x-3 min-w-0">
                       <PhotoAvatar person={rel.person} size="sm" />
                       <div className="min-w-0">
-                        <span className="font-semibold text-gray-800">{rel.person?.name}</span>
-                        <span className="text-sm text-gray-500 ml-2">({tagLabel(rel.type)})</span>
+                        <span className="font-semibold text-slate-800">{rel.person?.name}</span>
+                        <span className="text-sm text-slate-500 ml-2">({tagLabel(rel.type)})</span>
                       </div>
                     </div>
                     {canEdit && onDeleteRelationship && (
@@ -173,16 +166,15 @@ export default function PersonProfile({
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 italic">No relationships found</p>
+                <p className="text-slate-500 italic">No relationships found</p>
               )}
             </div>
           </div>
 
           {onEdit && (
             <div className="flex space-x-3 pt-4 border-t">
-              <button type="button" onClick={() => onEdit(person)} className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700">
-                <i className="fas fa-edit mr-2" />
-                Edit Profile
+              <button type="button" onClick={() => onEdit(person)} className="flex-1 btn-primary bg-indigo-600 text-white py-3 rounded-xl font-semibold">
+                Edit profile
               </button>
             </div>
           )}

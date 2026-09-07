@@ -11,7 +11,7 @@ export default function PhotoAvatar({ person, size = 'md' }) {
     xl: 'w-32 h-32 text-5xl',
   }
 
-  const colorClass = person?.gender === 'male' ? 'bg-blue-200 text-blue-600' : 'bg-pink-200 text-pink-600'
+  const colorClass = 'bg-indigo-50 text-indigo-700'
   const initials = (person?.name || '?')
     .split(' ')
     .map((n) => n[0])

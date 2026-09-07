@@ -139,10 +139,7 @@ export default function InviteMembersModal({ onClose, role }) {
     <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">
       <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto scrollbar-thin">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-slate-800">
-            <i className="fas fa-user-plus mr-2 text-indigo-600" />
-            Invite relative
-          </h2>
+          <h2 className="text-xl font-bold text-slate-800">Invite relative</h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl" aria-label="Close">
             <i className="fas fa-times" />
           </button>

@@ -5,7 +5,7 @@ Last updated: 2026-09-08
 ## Current focus
 
 - **Next (product):** live family use — real SMTP and public HTTPS/DNS.
-- **Just shipped:** Header **Tags** screen to add/edit custom relationship types (cousin, godparent, …). Add Link uses that catalog.
+- **Just shipped:** Visual restraint pass — calm page canvas, simpler header, one indigo accent, quieter family copy.
 
 ## Jira
 
@@ -118,7 +118,8 @@ project = SCRUM AND labels = peoplegraph AND issuetype = Story AND statusCategor
 
 ## What’s done (product)
 
-- Relationship tags: space catalog of kinship types (built-in + custom); header **Tags** next to Add Link; Add Link and path phrases use the catalog
+- Visual restraint: slate canvas, compact header (**Add** / **Invite** / **Link** + **More**), no gender-pink/blue chrome or dashboard stat tiles
+- Relationship tags: space catalog of kinship types (built-in + custom); Add Link and path phrases use the catalog (**More → Relationship tags**)
 - Account settings: `PATCH /api/auth/me` — signed-in users change name, email, and password (current password required)
 - Person contact fields: phone, email, Facebook, Instagram, LinkedIn, notes (social links open the public profile URL)
 - Phases **1–6** shipped (see `PHASE1.md`–`PHASE6.md`); Phase 7 UX in `PHASE7.md` and this STATUS
@@ -157,7 +158,7 @@ cd frontend && npm run dev       # http://localhost:5173
 
 ## Resume prompt (paste in a new Agent chat)
 
-> Read `STATUS.md`, `PHASE7.md`, `DEPLOY.md`, and `.cursor/rules/peoplegraph.mdc`. Phase 7 stories 21–35 are implemented. Account settings, person contact fields, and a Relationship tags catalog (header Tags) are shipped. Next is live family use (real SMTP + public HTTPS) unless new pilot tickets appear.
+> Read `STATUS.md`, `PHASE7.md`, `DEPLOY.md`, and `.cursor/rules/peoplegraph.mdc`. Phase 7 stories 21–35 are implemented. Visual restraint pass, account settings, person contact fields, and Relationship tags (**More** menu) are shipped. Next is live family use (real SMTP + public HTTPS) unless new pilot tickets appear.
 
 ## Family pilot notes (SCRUM-13)
 

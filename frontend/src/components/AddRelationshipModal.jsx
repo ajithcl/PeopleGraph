@@ -58,10 +58,7 @@ export default function AddRelationshipModal({ persons, tags = [], onClose, onSa
       <div className="modal-content bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto scrollbar-thin">
         <div className="p-6 border-b border-slate-100 flex justify-between items-start">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">
-              <i className="fas fa-link mr-2 text-green-600" />
-              Add Relationship
-            </h2>
+            <h2 className="text-2xl font-bold text-slate-800">Add relationship</h2>
             <p className="text-slate-500 mt-1">Create a new relationship between two family members</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">
@@ -91,7 +88,7 @@ export default function AddRelationshipModal({ persons, tags = [], onClose, onSa
                         setFromSearchQuery(person.name)
                         setShowFromDropdown(false)
                       }}
-                      className="p-3 hover:bg-green-50 cursor-pointer flex items-center space-x-3"
+                      className="p-3 hover:bg-indigo-50 cursor-pointer flex items-center space-x-3"
                     >
                       <PhotoAvatar person={person} size="sm" />
                       <p className="font-semibold text-slate-800">{person.name}</p>
@@ -134,7 +131,7 @@ export default function AddRelationshipModal({ persons, tags = [], onClose, onSa
                         setToSearchQuery(person.name)
                         setShowToDropdown(false)
                       }}
-                      className="p-3 hover:bg-green-50 cursor-pointer flex items-center space-x-3"
+                      className="p-3 hover:bg-indigo-50 cursor-pointer flex items-center space-x-3"
                     >
                       <PhotoAvatar person={person} size="sm" />
                       <p className="font-semibold text-slate-800">{person.name}</p>
@@ -149,7 +146,7 @@ export default function AddRelationshipModal({ persons, tags = [], onClose, onSa
             <button type="button" onClick={onClose} disabled={saving} className="flex-1 px-4 py-3 text-slate-700 font-semibold border-2 border-slate-200 rounded-lg">
               Cancel
             </button>
-            <button type="submit" disabled={saving || !fromPersonId || !toPersonId || !relationshipType} className="flex-1 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg disabled:bg-gray-300">
+            <button type="submit" disabled={saving || !fromPersonId || !toPersonId || !relationshipType} className="flex-1 px-4 py-3 btn-primary bg-indigo-600 text-white font-semibold rounded-xl disabled:bg-slate-300">
               {saving ? 'Saving…' : 'Save Relationship'}
             </button>
           </div>

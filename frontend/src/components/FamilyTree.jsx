@@ -14,19 +14,17 @@ function getInitials(name) {
     .slice(0, 3)
 }
 
-function getInitialsSVG(name, gender) {
+function getInitialsSVG(name) {
   const initials = getInitials(name)
-  const bgColor = gender === 'male' ? '#dbeafe' : '#fce7f3'
-  const textColor = gender === 'male' ? '#3b82f6' : '#ec4899'
   const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70">
-    <rect width="70" height="70" fill="${bgColor}"/>
-    <text x="35" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="${textColor}">${initials}</text>
+    <rect width="70" height="70" fill="#eef2ff"/>
+    <text x="35" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#4338ca">${initials}</text>
   </svg>`
   return `data:image/svg+xml;base64,${btoa(svgStr)}`
 }
 
 function photoHref(person) {
-  if (!person.photoUrl) return getInitialsSVG(person.name, person.gender)
+  if (!person.photoUrl) return getInitialsSVG(person.name)
   let url = person.photoUrl
   if (url.startsWith('/uploads/')) url = `${apiBase()}${url}`
   return url
@@ -256,7 +254,7 @@ export default function FamilyTree({ data, onNodeClick, highlightPath, rootPerso
 
       g.append('circle')
         .attr('r', nodeRadius)
-        .attr('fill', pos.node.gender === 'male' ? '#dbeafe' : '#fce7f3')
+        .attr('fill', '#eef2ff')
         .attr('stroke', highlighted ? '#fbbf24' : pos.rel ? getRelColor(pos.rel.type).stroke : '#94a3b8')
         .attr('stroke-width', highlighted ? 4 : 2.5)
         .attr('filter', 'url(#node-shadow)')
@@ -308,7 +306,7 @@ export default function FamilyTree({ data, onNodeClick, highlightPath, rootPerso
     rootGroup
       .append('circle')
       .attr('r', rootRadius)
-      .attr('fill', rootNode.gender === 'male' ? '#dbeafe' : '#fce7f3')
+      .attr('fill', '#eef2ff')
       .attr('stroke', pathSet.has(rootNode.id) ? '#fbbf24' : '#6366f1')
       .attr('stroke-width', 4)
       .attr('filter', 'url(#root-glow)')
@@ -401,7 +399,7 @@ export default function FamilyTree({ data, onNodeClick, highlightPath, rootPerso
   }
 
   return (
-    <div className="relative bg-white rounded-2xl shadow-xl border border-slate-100 p-3 sm:p-4 overflow-hidden select-none" style={{ minHeight: '420px' }}>
+    <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 p-3 sm:p-4 overflow-hidden select-none" style={{ minHeight: '420px' }}>
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
         <p className="hidden sm:block text-xs text-slate-400 mr-1">Drag to pan · pinch or scroll to zoom</p>
         <button

@@ -161,9 +161,6 @@ export default function ClaimOnboarding({ session, onClaimed, onLogout, onSessio
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="modal-content bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg p-6 sm:p-8">
         <div className="text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-id-card text-2xl" />
-          </div>
           <h1 className="text-2xl font-bold text-slate-800">Who are you in this family?</h1>
           <p className="text-slate-500 mt-2 text-sm">
             Find your name in <strong>{spaceName}</strong> so relatives can see how they connect to you.

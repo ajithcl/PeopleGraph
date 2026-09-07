@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { api, saveSession } from '../api'
 import AccountSettingsModal from './AccountSettingsModal'
 import ActivityFeed from './ActivityFeed'
@@ -36,6 +36,8 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
   const [generations, setGenerations] = useState(2)
   const [mainView, setMainView] = useState('tree')
   const [relTags, setRelTags] = useState([])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
 
   const canEdit = session.role === 'owner' || session.role === 'editor'
   const spaceName = (session.spaces || []).find((s) => s.id === session.spaceId)?.name || 'Kinship space'
@@ -70,6 +72,15 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
     api.setAuth(session.token, session.spaceId)
     loadData()
   }, [session.token, session.spaceId, loadData])
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const onDoc = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [menuOpen])
 
   const filteredPersons = persons.filter(
     (p) =>
@@ -176,8 +187,8 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-white mx-auto mb-4" />
-          <p className="text-white text-xl font-semibold">Loading kinship graph…</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-indigo-600 mx-auto mb-4" />
+          <p className="text-slate-600 font-medium">Loading family…</p>
         </div>
       </div>
     )
@@ -187,8 +198,7 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8 max-w-md text-center">
-          <i className="fas fa-exclamation-triangle text-6xl text-red-500 mb-4" />
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">Could not load graph</h2>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Could not load family</h2>
           <p className="text-slate-600 mb-6">{error}</p>
           <div className="flex gap-3">
             <button type="button" onClick={loadData} className="btn-primary flex-1 bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold">
@@ -206,79 +216,132 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
   return (
     <div className="min-h-screen p-3 sm:p-6 overflow-x-hidden">
       <div className="max-w-7xl mx-auto mb-6">
-        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-4 sm:p-6 md:p-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 flex items-center">
-                <i className="fas fa-sitemap mr-3 text-indigo-600" />
-                PeopleGraph
-              </h1>
-              <p className="text-slate-500 mt-1 font-medium text-sm sm:text-base break-words">
-                {spaceName} · {persons.length} member{persons.length !== 1 ? 's' : ''} · you are{' '}
-                <span className="capitalize">{session.role}</span>
-                {session.personName && (
-                  <>
-                    {' '}
-                    · You are <strong className="text-slate-700">{session.personName}</strong>
-                  </>
-                )}
-              </p>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+            <div className="min-w-0 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold tracking-tight flex-shrink-0">
+                P
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">PeopleGraph</h1>
+                <p className="text-slate-500 mt-0.5 text-sm break-words">
+                  {spaceName}
+                  {' · '}
+                  {persons.length} {persons.length === 1 ? 'person' : 'people'}
+                  {stats.totalRelationships != null && (
+                    <>
+                      {' · '}
+                      {stats.totalRelationships} {stats.totalRelationships === 1 ? 'link' : 'links'}
+                    </>
+                  )}
+                  {session.personName && (
+                    <>
+                      {' · '}
+                      You are <strong className="text-slate-700 font-semibold">{session.personName}</strong>
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2 items-center">
-              {(session.spaces || []).length > 1 && (
-                <select value={session.spaceId} onChange={(e) => switchSpace(e.target.value)} className="p-3 border border-slate-200 rounded-xl text-sm max-w-full">
-                  {session.spaces.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.role})
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button type="button" onClick={() => setShowUnclaimConfirm(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-3 rounded-xl font-semibold hover:bg-slate-50 text-sm">
-                <i className="fas fa-id-card mr-2" />
-                <span className="hidden sm:inline">Who I am</span>
-                <span className="sm:hidden">Me</span>
-              </button>
               {session.role === 'owner' && (
-                <button type="button" onClick={() => setShowInviteModal(true)} className="bg-white border border-indigo-200 text-indigo-700 px-3 sm:px-4 py-3 rounded-xl font-semibold hover:bg-indigo-50">
-                  <i className="fas fa-user-plus mr-2" />
+                <button type="button" onClick={() => setShowInviteModal(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-2.5 rounded-xl font-semibold hover:bg-slate-50 text-sm">
                   Invite
                 </button>
               )}
               {canEdit && (
                 <>
-                  <button type="button" onClick={() => setShowAddModal(true)} className="btn-primary bg-indigo-600 text-white px-3 sm:px-4 py-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/25">
-                    <i className="fas fa-plus mr-2" />
-                    <span className="hidden sm:inline">Add Member</span>
-                    <span className="sm:hidden">Add</span>
+                  <button type="button" onClick={() => setShowAddModal(true)} className="btn-primary bg-indigo-600 text-white px-3 sm:px-4 py-2.5 rounded-xl font-semibold text-sm">
+                    Add
                   </button>
-                  <button type="button" onClick={() => setShowAddRelationshipModal(true)} className="btn-primary bg-emerald-600 text-white px-3 sm:px-4 py-3 rounded-xl font-semibold">
-                    <i className="fas fa-link mr-2" />
-                    <span className="hidden sm:inline">Add Link</span>
-                    <span className="sm:hidden">Link</span>
+                  <button type="button" onClick={() => setShowAddRelationshipModal(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-2.5 rounded-xl font-semibold hover:bg-slate-50 text-sm">
+                    Link
                   </button>
                 </>
               )}
-              <button
-                type="button"
-                onClick={() => setMainView((v) => (v === 'tags' ? 'tree' : 'tags'))}
-                className={`px-3 sm:px-4 py-3 rounded-xl font-semibold ${
-                  mainView === 'tags'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <i className="fas fa-tags mr-2" />
-                <span className="hidden sm:inline">Tags</span>
-              </button>
-              <button type="button" onClick={() => setShowAccount(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-3 rounded-xl font-semibold hover:bg-slate-50 text-sm">
-                <i className="fas fa-user-cog mr-2" />
-                <span className="hidden sm:inline">Account</span>
-              </button>
-              <button type="button" onClick={onLogout} className="text-slate-500 hover:text-slate-800 px-3 py-3 text-sm font-medium truncate max-w-[10rem]">
-                <i className="fas fa-sign-out-alt mr-1" />
-                {session.user?.name || session.user?.email}
-              </button>
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((open) => !open)}
+                  className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-2.5 rounded-xl font-semibold hover:bg-slate-50 text-sm"
+                  aria-expanded={menuOpen}
+                  aria-haspopup="menu"
+                >
+                  More
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-40" role="menu">
+                    {(session.spaces || []).length > 1 && (
+                      <div className="px-3 py-2 border-b border-slate-100">
+                        <p className="text-xs font-medium text-slate-400 mb-1">Family</p>
+                        <select
+                          value={session.spaceId}
+                          onChange={(e) => {
+                            switchSpace(e.target.value)
+                            setMenuOpen(false)
+                          }}
+                          className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                        >
+                          {session.spaces.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setShowUnclaimConfirm(true)
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Who I am
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setMainView((v) => (v === 'tags' ? 'tree' : 'tags'))
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      {mainView === 'tags' ? 'Family tree' : 'Relationship tags'}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setShowAccount(true)
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Account
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onLogout()
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 border-t border-slate-100"
+                    >
+                      Sign out
+                      {session.user?.name || session.user?.email ? (
+                        <span className="block text-xs text-slate-400 truncate mt-0.5">
+                          {session.user?.name || session.user?.email}
+                        </span>
+                      ) : null}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -290,9 +353,9 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
               placeholder="Search by name or nickname..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full p-4 pl-12 border-2 border-slate-200 rounded-xl focus:border-indigo-500 text-slate-800"
+              className="w-full p-3.5 pl-11 border border-slate-200 rounded-xl focus:border-indigo-500 text-slate-800 bg-slate-50/60"
             />
-            <i className="fas fa-search absolute left-4 top-5 text-slate-400 text-xl" />
+            <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
 
           {searchTerm && (
@@ -337,11 +400,10 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
         <PathFinder persons={persons} defaultFromId={session.personId} onFindPath={handleFindPath} />
         {pathError && <p className="text-sm text-red-600 bg-white rounded-xl p-3">{pathError}</p>}
         {pathResult && (
-          <div className="bg-white rounded-xl shadow-lg border border-slate-100 p-4 sm:p-6 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 overflow-hidden">
             {pathResult.length > 0 ? (
               <div>
-                <h4 className="text-lg font-bold text-slate-800 mb-2">
-                  <i className="fas fa-check-circle mr-2 text-green-600" />
+                <h4 className="text-base font-semibold text-slate-800 mb-2">
                   How they connect
                   {pathExplanation?.degree != null && (
                     <span className="ml-2 text-sm font-medium text-slate-500">
@@ -375,17 +437,16 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
                         className="flex-shrink-0 text-center"
                       >
                         <PhotoAvatar person={person} size="md" />
-                        <p className="text-sm font-semibold text-gray-800 max-w-[100px] truncate mt-2">{person.name}</p>
+                        <p className="text-sm font-semibold text-slate-800 max-w-[100px] truncate mt-2">{person.name}</p>
                       </button>
-                      {idx < pathResult.length - 1 && <i className="fas fa-arrow-right text-2xl text-gray-400 flex-shrink-0" />}
+                      {idx < pathResult.length - 1 && <span className="text-slate-300 flex-shrink-0">→</span>}
                     </Fragment>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="text-center text-gray-600">
-                <i className="fas fa-times-circle text-4xl text-red-500 mb-2" />
-                <p className="font-semibold">No connection found between selected persons</p>
+              <div className="text-center text-slate-600 py-2">
+                <p className="font-semibold">No connection found between those people</p>
               </div>
             )}
           </div>
@@ -394,7 +455,7 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
 
       <div className="max-w-7xl mx-auto mb-6">
         {persons.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-8 sm:p-12 text-center">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
             <h3 className="text-xl font-bold text-slate-800 mb-2">No people in this space yet</h3>
             <p className="text-slate-500 mb-6">Add relatives and connect them so everyone can see how they relate.</p>
             {canEdit && (
@@ -406,14 +467,16 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-sm font-semibold text-white/90">Generations around center:</span>
+              <span className="text-sm font-medium text-slate-600">Generations to show</span>
               {[1, 2, 3].map((n) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => setGenerations(n)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
-                    generations === n ? 'bg-white text-indigo-700' : 'bg-white/20 text-white hover:bg-white/30'
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                    generations === n
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   {n}
@@ -434,21 +497,6 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
 
       <div className="max-w-7xl mx-auto mb-6">
         <ActivityFeed refreshKey={`${persons.length}-${relationships.length}`} />
-      </div>
-
-      <div className="max-w-7xl mx-auto mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
-        {[
-          { icon: 'fa-users', color: 'text-indigo-600', value: stats.totalPersons || 0, label: 'Total Members' },
-          { icon: 'fa-mars', color: 'text-blue-500', value: stats.maleCount || 0, label: 'Male Members' },
-          { icon: 'fa-venus', color: 'text-pink-500', value: stats.femaleCount || 0, label: 'Female Members' },
-          { icon: 'fa-link', color: 'text-emerald-500', value: stats.totalRelationships || 0, label: 'Relationships' },
-        ].map((s) => (
-          <div key={s.label} className="card-hover bg-white rounded-xl shadow-lg border border-slate-100 p-4 sm:p-6 text-center">
-            <i className={`fas ${s.icon} text-2xl sm:text-4xl ${s.color} mb-2`} />
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{s.value}</p>
-            <p className="text-slate-500 text-xs sm:text-sm font-medium">{s.label}</p>
-          </div>
-        ))}
       </div>
       </>
       )}

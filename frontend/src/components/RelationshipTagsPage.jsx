@@ -103,19 +103,15 @@ export default function RelationshipTagsPage({ canEdit, onBack, onChanged }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-4 sm:p-6">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
-            <i className="fas fa-tags mr-2 text-indigo-600" />
-            Relationship tags
-          </h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Relationship tags</h2>
           <p className="text-slate-500 mt-1 text-sm">
             These names appear in Add Link. Built-in family types stay; you can add cousin, godparent, and similar.
           </p>
         </div>
-        <button type="button" onClick={onBack} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-semibold hover:bg-slate-200">
-          <i className="fas fa-sitemap mr-2" />
+        <button type="button" onClick={onBack} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-xl font-semibold hover:bg-slate-50">
           Back to tree
         </button>
       </div>

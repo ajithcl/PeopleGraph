@@ -94,7 +94,7 @@ export default function App() {
   if (booting) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-white" />
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-indigo-600" />
       </div>
     )
   }
