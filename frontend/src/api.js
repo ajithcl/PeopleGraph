@@ -88,6 +88,14 @@ class ApiService {
     return this.request(`${apiBase()}/api/auth/me${q}`, { headers: this.authHeaders(false) })
   }
 
+  updateAccount(payload) {
+    return this.request(`${apiBase()}/api/auth/me`, {
+      method: 'PATCH',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload),
+    })
+  }
+
   previewInvite(token) {
     return this.request(`${apiBase()}/api/invites/${encodeURIComponent(token)}`)
   }

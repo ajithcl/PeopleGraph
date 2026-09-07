@@ -1,5 +1,28 @@
 import PhotoAvatar from './PhotoAvatar'
 
+function ContactLink({ href, icon, label, children }) {
+  if (!href && !children) return null
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-indigo-700 hover:underline font-semibold"
+      >
+        <i className={`fab ${icon} w-5 text-center`} />
+        {label}
+      </a>
+    )
+  }
+  return (
+    <p className="flex items-center gap-2 text-gray-800 font-semibold">
+      <i className={`fas ${icon} w-5 text-center text-slate-400`} />
+      {children}
+    </p>
+  )
+}
+
 export default function PersonProfile({
   person,
   onClose,
@@ -84,6 +107,44 @@ export default function PersonProfile({
               <p className="text-lg font-semibold text-gray-800 capitalize">{person.gender}</p>
             </div>
           </div>
+
+          {(person.phone || person.email || person.facebookUrl || person.instagramUrl || person.linkedinUrl || person.notes) && (
+            <div>
+              <h3 className="text-xl font-bold text-gray-800 mb-3">
+                <i className="fas fa-address-card mr-2 text-indigo-600" />
+                Contact
+              </h3>
+              <div className="space-y-3 bg-slate-50 rounded-xl p-4">
+                {person.phone && (
+                  <a href={`tel:${person.phone}`} className="flex items-center gap-2 text-indigo-700 hover:underline font-semibold">
+                    <i className="fas fa-phone w-5 text-center" />
+                    {person.phone}
+                  </a>
+                )}
+                {person.email && (
+                  <a href={`mailto:${person.email}`} className="flex items-center gap-2 text-indigo-700 hover:underline font-semibold break-all">
+                    <i className="fas fa-envelope w-5 text-center" />
+                    {person.email}
+                  </a>
+                )}
+                {person.facebookUrl && (
+                  <ContactLink href={person.facebookUrl} icon="fa-facebook" label="Open Facebook profile" />
+                )}
+                {person.instagramUrl && (
+                  <ContactLink href={person.instagramUrl} icon="fa-instagram" label="Open Instagram" />
+                )}
+                {person.linkedinUrl && (
+                  <ContactLink href={person.linkedinUrl} icon="fa-linkedin" label="Open LinkedIn profile" />
+                )}
+                {person.notes && (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Notes</p>
+                    <p className="text-gray-800 whitespace-pre-wrap">{person.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-3">

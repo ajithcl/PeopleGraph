@@ -169,3 +169,75 @@ def test_space_isolation_and_claim_rules(client):
             assert isolated.status_code == 403
     finally:
         _cleanup(space_id, emails)
+
+
+def test_change_account_credentials(client):
+    login = client.post('/api/auth/login', json={'email': OWNER_EMAIL, 'password': OWNER_PASSWORD})
+    if login.status_code != 200 or not _json(login).get('success'):
+        pytest.skip('Owner smoke account is not available for integration tests')
+
+    owner_token = _json(login)['data']['token']
+    stamp = uuid.uuid4().hex[:8]
+    created = client.post(
+        '/api/spaces',
+        headers=_auth(owner_token),
+        json={'name': f'SCRUM26-acct-{stamp}'},
+    )
+    assert created.status_code == 201
+    space_id = _json(created)['data']['id']
+    email = f'scrum26-acct-{stamp}@peoplegraph.test'
+    new_email = f'scrum26-acct-new-{stamp}@peoplegraph.test'
+
+    try:
+        invite = client.post(
+            f'/api/spaces/{space_id}/invites',
+            headers=_auth(owner_token),
+            json={'role': 'viewer', 'email': email},
+        )
+        assert invite.status_code == 201
+        token = _json(invite)['data']['token']
+        registered = client.post(
+            '/api/auth/register',
+            json={'email': email, 'password': 'password123', 'name': 'Acct Tester', 'inviteToken': token},
+        )
+        assert registered.status_code == 201
+        user_token = _json(registered)['data']['token']
+
+        wrong = client.patch(
+            '/api/auth/me',
+            headers=_auth(user_token),
+            json={'currentPassword': 'nope-nope', 'name': 'Hacker'},
+        )
+        assert wrong.status_code == 403
+
+        taken = client.patch(
+            '/api/auth/me',
+            headers=_auth(user_token),
+            json={'currentPassword': 'password123', 'email': OWNER_EMAIL},
+        )
+        assert taken.status_code == 409
+
+        updated = client.patch(
+            '/api/auth/me',
+            headers=_auth(user_token),
+            json={
+                'currentPassword': 'password123',
+                'name': 'Acct Tester Two',
+                'email': new_email,
+                'newPassword': 'password456',
+            },
+        )
+        assert updated.status_code == 200, updated.get_data(as_text=True)
+        body = _json(updated)['data']
+        assert body['user']['email'] == new_email
+        assert body['user']['name'] == 'Acct Tester Two'
+        assert body.get('token')
+
+        old_login = client.post('/api/auth/login', json={'email': email, 'password': 'password123'})
+        assert old_login.status_code == 401
+        new_login = client.post('/api/auth/login', json={'email': new_email, 'password': 'password456'})
+        assert new_login.status_code == 200
+        assert _json(new_login)['success'] is True
+    finally:
+        _cleanup(space_id, [email, new_email])
+

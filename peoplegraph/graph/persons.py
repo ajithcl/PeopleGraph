@@ -9,7 +9,7 @@ from peoplegraph.activity import record_activity
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.config import Config
 from peoplegraph.db import get_driver
-from peoplegraph.serializers import format_person
+from peoplegraph.serializers import format_person, person_details_from_body
 from peoplegraph.storage import get_storage
 from peoplegraph.tenancy import person_in_space, require_space_access
 
@@ -63,6 +63,8 @@ def search_persons(space_id):
             MATCH (p:Person {spaceId: $spaceId})
             WHERE toLower(p.name) CONTAINS toLower($query)
                OR toLower(coalesce(p.nickName, '')) CONTAINS toLower($query)
+               OR toLower(coalesce(p.email, '')) CONTAINS toLower($query)
+               OR coalesce(p.phone, '') CONTAINS $query
             RETURN p
             ORDER BY p.name
             LIMIT 20
@@ -92,6 +94,7 @@ def create_person(space_id):
     if not data.get('name') or not data.get('gender'):
         return jsonify({'success': False, 'error': 'Name and gender are required'}), 400
 
+    details = person_details_from_body(data)
     person_id = str(uuid.uuid4())
     driver = get_driver()
     with driver.session() as session:
@@ -105,7 +108,13 @@ def create_person(space_id):
                 gender: $gender,
                 sex: $sex,
                 dateOfBirth: $dateOfBirth,
-                photoUrl: $photoUrl
+                photoUrl: $photoUrl,
+                phone: $phone,
+                email: $email,
+                facebookId: $facebookId,
+                instagram: $instagram,
+                linkedin: $linkedin,
+                notes: $notes
             })
             RETURN p
             """,
@@ -117,6 +126,7 @@ def create_person(space_id):
             sex=data.get('sex', ''),
             dateOfBirth=data.get('dateOfBirth', ''),
             photoUrl=data.get('photoUrl', ''),
+            **details,
         ).single()
 
     person = format_person(record['p'])
@@ -130,8 +140,18 @@ def create_person(space_id):
 @require_space_access('editor')
 def update_person(space_id, person_id):
     data = request.get_json(silent=True) or {}
-    if not person_in_space(person_id, space_id):
+    node = person_in_space(person_id, space_id)
+    if not node:
         return jsonify({'success': False, 'error': 'Person not found'}), 404
+
+    existing = dict(node)
+    details = person_details_from_body(data, existing)
+    name = data['name'] if 'name' in data else existing.get('name')
+    nick_name = data['nickName'] if 'nickName' in data else existing.get('nickName', '')
+    gender = data['gender'] if 'gender' in data else existing.get('gender')
+    sex = data['sex'] if 'sex' in data else existing.get('sex', '')
+    date_of_birth = data['dateOfBirth'] if 'dateOfBirth' in data else existing.get('dateOfBirth', '')
+    photo_url = data['photoUrl'] if 'photoUrl' in data else existing.get('photoUrl', '')
 
     driver = get_driver()
     with driver.session() as session:
@@ -143,17 +163,24 @@ def update_person(space_id, person_id):
                 p.gender = $gender,
                 p.sex = $sex,
                 p.dateOfBirth = $dateOfBirth,
-                p.photoUrl = $photoUrl
+                p.photoUrl = $photoUrl,
+                p.phone = $phone,
+                p.email = $email,
+                p.facebookId = $facebookId,
+                p.instagram = $instagram,
+                p.linkedin = $linkedin,
+                p.notes = $notes
             RETURN p
             """,
             id=person_id,
             spaceId=space_id,
-            name=data.get('name'),
-            nickName=data.get('nickName', ''),
-            gender=data.get('gender'),
-            sex=data.get('sex', ''),
-            dateOfBirth=data.get('dateOfBirth', ''),
-            photoUrl=data.get('photoUrl', ''),
+            name=name,
+            nickName=nick_name or '',
+            gender=gender,
+            sex=sex or '',
+            dateOfBirth=date_of_birth or '',
+            photoUrl=photo_url or '',
+            **details,
         ).single()
 
     return jsonify({'success': True, 'data': format_person(record['p'])})

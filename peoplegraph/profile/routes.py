@@ -9,7 +9,7 @@ from peoplegraph.activity import record_activity, space_owner_contacts
 from peoplegraph.auth.decorators import require_auth
 from peoplegraph.db import get_driver
 from peoplegraph.email_service import send_claim_notice_email
-from peoplegraph.serializers import format_person
+from peoplegraph.serializers import format_person, person_details_from_body
 from peoplegraph.tenancy import person_in_space, require_space_access
 
 logger = logging.getLogger(__name__)
@@ -203,6 +203,7 @@ def claim_new_person(space_id):
     if not gender:
         return jsonify({'success': False, 'error': 'gender is required'}), 400
 
+    details = person_details_from_body(data)
     person_id = str(uuid.uuid4())
     driver = get_driver()
     with driver.session() as session:
@@ -218,7 +219,13 @@ def claim_new_person(space_id):
                 gender: $gender,
                 sex: $sex,
                 dateOfBirth: $dateOfBirth,
-                photoUrl: ''
+                photoUrl: '',
+                phone: $phone,
+                email: $email,
+                facebookId: $facebookId,
+                instagram: $instagram,
+                linkedin: $linkedin,
+                notes: $notes
             })
             CREATE (u)-[:REPRESENTS]->(p)
             RETURN p
@@ -231,6 +238,7 @@ def claim_new_person(space_id):
             gender=gender,
             sex=data.get('sex', ''),
             dateOfBirth=data.get('dateOfBirth', ''),
+            **details,
         ).single()
 
     person = format_person(record['p'])

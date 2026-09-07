@@ -123,7 +123,7 @@ export default function App() {
   }
 
   if (session.needsClaim || !session.personId) {
-    return <ClaimOnboarding session={session} onClaimed={handleClaimed} onLogout={handleLogout} />
+    return <ClaimOnboarding session={session} onClaimed={handleClaimed} onLogout={handleLogout} onSessionUpdate={handleClaimed} />
   }
 
   return (

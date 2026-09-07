@@ -328,6 +328,104 @@ def me():
     })
 
 
+@auth_bp.route('/me', methods=['PATCH'])
+@require_auth
+def update_me():
+    """Change display name, email, and/or password. Current password is required."""
+    from flask import g
+
+    data = request.get_json(silent=True) or {}
+    current_password = data.get('currentPassword') or ''
+    if not current_password:
+        return jsonify({'success': False, 'error': 'Current password is required'}), 400
+
+    name = data.get('name')
+    email_raw = data.get('email')
+    new_password = data.get('newPassword')
+
+    driver = get_driver()
+    with driver.session() as session:
+        record = session.run(
+            'MATCH (u:User {id: $id}) RETURN u',
+            id=g.user['id'],
+        ).single()
+        if not record:
+            return jsonify({'success': False, 'error': 'User not found'}), 401
+
+        props = dict(record['u'])
+        if not verify_password(props.get('passwordHash', ''), current_password):
+            return jsonify({'success': False, 'error': 'Current password is incorrect'}), 403
+
+        sets = []
+        params = {'id': g.user['id']}
+
+        if name is not None:
+            name = str(name).strip()
+            if not name:
+                return jsonify({'success': False, 'error': 'Name cannot be empty'}), 400
+            sets.append('u.name = $name')
+            params['name'] = name
+
+        if email_raw is not None:
+            email = str(email_raw).strip().lower()
+            if '@' not in email or '.' not in email.rsplit('@', 1)[-1]:
+                return jsonify({'success': False, 'error': 'Enter a valid email address'}), 400
+            if email != (props.get('email') or '').lower():
+                taken = session.run(
+                    """
+                    MATCH (u:User {email: $email})
+                    WHERE u.id <> $id
+                    RETURN u
+                    """,
+                    email=email,
+                    id=g.user['id'],
+                ).single()
+                if taken:
+                    return jsonify({'success': False, 'error': 'That email is already registered'}), 409
+                sets.append('u.email = $email')
+                params['email'] = email
+
+        if new_password:
+            if len(new_password) < 8:
+                return jsonify({
+                    'success': False,
+                    'error': 'New password must be at least 8 characters',
+                }), 400
+            if verify_password(props.get('passwordHash', ''), new_password):
+                return jsonify({
+                    'success': False,
+                    'error': 'New password must be different from the current password',
+                }), 400
+            sets.append('u.passwordHash = $passwordHash')
+            params['passwordHash'] = hash_password(new_password)
+
+        if not sets:
+            return jsonify({
+                'success': False,
+                'error': 'Nothing to update. Change name, email, or password.',
+            }), 400
+
+        updated = session.run(
+            f"""
+            MATCH (u:User {{id: $id}})
+            SET {', '.join(sets)}
+            RETURN u
+            """,
+            **params,
+        ).single()
+
+    user = format_user(updated['u'])
+    token = create_access_token(user['id'], user['email'])
+    return jsonify({
+        'success': True,
+        'data': {
+            'user': user,
+            'token': token,
+        },
+        'message': 'Account updated.',
+    })
+
+
 def g_user_id():
     from flask import g
     return g.user['id']

@@ -83,7 +83,9 @@ def main():
                 MERGE (x:Person {id: $id})
                 SET x.spaceId = $spaceId, x.name = $name, x.nickName = $nickName,
                     x.gender = $gender, x.sex = $sex, x.dateOfBirth = $dateOfBirth,
-                    x.photoUrl = $photoUrl
+                    x.photoUrl = $photoUrl, x.phone = $phone, x.email = $email,
+                    x.facebookId = $facebookId, x.instagram = $instagram,
+                    x.linkedin = $linkedin, x.notes = $notes
                 """,
                 id=p.get('id'),
                 spaceId=p.get('spaceId') or '',
@@ -93,6 +95,12 @@ def main():
                 sex=p.get('sex') or '',
                 dateOfBirth=p.get('dateOfBirth') or '',
                 photoUrl=p.get('photoUrl') or '',
+                phone=p.get('phone') or '',
+                email=p.get('email') or '',
+                facebookId=p.get('facebookId') or '',
+                instagram=p.get('instagram') or '',
+                linkedin=p.get('linkedin') or '',
+                notes=p.get('notes') or '',
             )
         for rel in graph.get('relationships') or []:
             rel_type = rel.get('type') or 'FRIEND_OF'

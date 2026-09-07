@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { api, saveSession } from '../api'
+import AccountSettingsModal from './AccountSettingsModal'
 import ActivityFeed from './ActivityFeed'
 import AddPersonModal from './AddPersonModal'
 import AddRelationshipModal from './AddRelationshipModal'
@@ -22,6 +23,7 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showAddRelationshipModal, setShowAddRelationshipModal] = useState(false)
   const [showUnclaimConfirm, setShowUnclaimConfirm] = useState(false)
+  const [showAccount, setShowAccount] = useState(false)
   const [highlightPath, setHighlightPath] = useState(null)
   const [pathResult, setPathResult] = useState(null)
   const [pathExplanation, setPathExplanation] = useState(null)
@@ -252,6 +254,10 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
                   </button>
                 </>
               )}
+              <button type="button" onClick={() => setShowAccount(true)} className="bg-white border border-slate-200 text-slate-700 px-3 sm:px-4 py-3 rounded-xl font-semibold hover:bg-slate-50 text-sm">
+                <i className="fas fa-user-cog mr-2" />
+                <span className="hidden sm:inline">Account</span>
+              </button>
               <button type="button" onClick={onLogout} className="text-slate-500 hover:text-slate-800 px-3 py-3 text-sm font-medium truncate max-w-[10rem]">
                 <i className="fas fa-sign-out-alt mr-1" />
                 {session.user?.name || session.user?.email}
@@ -421,6 +427,13 @@ export default function KinshipApp({ session, onLogout, onSessionUpdate }) {
       {showAddModal && canEdit && <AddPersonModal onClose={() => setShowAddModal(false)} onSave={handleAddPerson} />}
       {showAddRelationshipModal && canEdit && <AddRelationshipModal persons={persons} onClose={() => setShowAddRelationshipModal(false)} onSave={loadData} />}
       {showInviteModal && <InviteMembersModal role={session.role} onClose={() => setShowInviteModal(false)} />}
+      {showAccount && (
+        <AccountSettingsModal
+          session={session}
+          onClose={() => setShowAccount(false)}
+          onSessionUpdate={onSessionUpdate}
+        />
+      )}
 
       {showUnclaimConfirm && (
         <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">

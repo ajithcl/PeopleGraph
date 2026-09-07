@@ -48,6 +48,22 @@ def test_weak_secrets():
     assert not is_weak_secret('a' * 40)
 
 
+def test_facebook_and_instagram_urls():
+    from peoplegraph.serializers import facebook_profile_url, instagram_profile_url, linkedin_profile_url
+
+    assert facebook_profile_url('ajith.cl') == 'https://www.facebook.com/ajith.cl'
+    assert facebook_profile_url('https://www.facebook.com/ajith.cl').startswith('https://www.facebook.com/')
+    assert facebook_profile_url('javascript:alert(1)') == ''
+    assert facebook_profile_url('https://evil.example/x') == ''
+    assert instagram_profile_url('@family') == 'https://www.instagram.com/family'
+    assert instagram_profile_url('') == ''
+    assert linkedin_profile_url('ajith-kumar') == 'https://www.linkedin.com/in/ajith-kumar'
+    assert linkedin_profile_url('in/ajith-kumar') == 'https://www.linkedin.com/in/ajith-kumar'
+    assert linkedin_profile_url('https://www.linkedin.com/in/ajith-kumar').startswith('https://www.linkedin.com/')
+    assert linkedin_profile_url('javascript:alert(1)') == ''
+    assert linkedin_profile_url('https://evil.example/x') == ''
+
+
 def test_dummy_smtp_not_configured(monkeypatch):
     from peoplegraph import config as cfg
 

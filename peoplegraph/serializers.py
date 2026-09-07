@@ -1,6 +1,7 @@
 """Shared serializers and date helpers."""
 
 from datetime import datetime, timezone
+from urllib.parse import quote, urlparse
 
 import neo4j
 
@@ -15,8 +16,132 @@ def serialize_date(value):
     return str(value)
 
 
+def social_profile_url(value, hosts, site_prefix):
+    """Turn a handle or pasted URL into an https profile link. Rejects other sites/schemes."""
+    raw = (value or '').strip()
+    if not raw:
+        return ''
+    lowered = raw.lower()
+    if lowered.startswith(('javascript:', 'data:', 'vbscript:')):
+        return ''
+    if '://' in raw:
+        try:
+            parsed = urlparse(raw)
+        except ValueError:
+            return ''
+        host = (parsed.hostname or '').lower()
+        if parsed.scheme not in ('http', 'https'):
+            return ''
+        if any(host == h or host.endswith('.' + h) for h in hosts):
+            return raw
+        return ''
+    handle = raw.lstrip('@').strip()
+    for prefix in (
+        'https://www.facebook.com/',
+        'http://www.facebook.com/',
+        'https://facebook.com/',
+        'http://facebook.com/',
+        'facebook.com/',
+        'www.facebook.com/',
+        'fb.com/',
+        'https://www.instagram.com/',
+        'http://www.instagram.com/',
+        'https://instagram.com/',
+        'instagram.com/',
+        'www.instagram.com/',
+    ):
+        if handle.lower().startswith(prefix):
+            handle = handle[len(prefix):]
+            break
+    handle = handle.split('/')[0].split('?')[0].strip()
+    if not handle:
+        return ''
+    return f'https://{site_prefix}{quote(handle)}'
+
+
+def facebook_profile_url(value):
+    return social_profile_url(
+        value,
+        hosts=('facebook.com', 'fb.com', 'fb.me'),
+        site_prefix='www.facebook.com/',
+    )
+
+
+def instagram_profile_url(value):
+    return social_profile_url(
+        value,
+        hosts=('instagram.com', 'instagr.am'),
+        site_prefix='www.instagram.com/',
+    )
+
+
+def linkedin_profile_url(value):
+    """Handle, /in/ slug, or pasted LinkedIn URL → https profile link."""
+    raw = (value or '').strip()
+    if not raw:
+        return ''
+    lowered = raw.lower()
+    if lowered.startswith(('javascript:', 'data:', 'vbscript:')):
+        return ''
+    if '://' in raw:
+        try:
+            parsed = urlparse(raw)
+        except ValueError:
+            return ''
+        host = (parsed.hostname or '').lower()
+        if parsed.scheme not in ('http', 'https'):
+            return ''
+        if host == 'linkedin.com' or host.endswith('.linkedin.com') or host == 'lnkd.in':
+            return raw
+        return ''
+    handle = raw.lstrip('@').strip()
+    for prefix in (
+        'https://www.linkedin.com/',
+        'http://www.linkedin.com/',
+        'https://linkedin.com/',
+        'http://linkedin.com/',
+        'www.linkedin.com/',
+        'linkedin.com/',
+    ):
+        if handle.lower().startswith(prefix):
+            handle = handle[len(prefix):]
+            break
+    path = handle.split('?')[0].strip('/')
+    if not path:
+        return ''
+    first, _, rest = path.partition('/')
+    if first.lower() in ('in', 'pub', 'company') and rest:
+        slug = rest.split('/')[0].strip()
+        if not slug:
+            return ''
+        return f'https://www.linkedin.com/{first.lower()}/{quote(slug)}'
+    slug = first.strip()
+    if not slug:
+        return ''
+    return f'https://www.linkedin.com/in/{quote(slug)}'
+
+
+PERSON_DETAIL_KEYS = ('phone', 'email', 'facebookId', 'instagram', 'linkedin', 'notes')
+
+
+def person_details_from_body(data, existing=None):
+    """Contact fields from a JSON body, keeping existing values when a key is omitted."""
+    existing = existing or {}
+    out = {}
+    for key in PERSON_DETAIL_KEYS:
+        if key in data:
+            value = data.get(key)
+            out[key] = '' if value is None else str(value).strip()
+        else:
+            out[key] = existing.get(key) or ''
+    return out
+
+
 def format_person(node):
     props = dict(node)
+    facebook_id = props.get('facebookId') or ''
+    instagram = props.get('instagram') or ''
+    linkedin = props.get('linkedin') or ''
     return {
         'id': props.get('id') or str(node.element_id),
         'spaceId': props.get('spaceId', ''),
@@ -26,6 +151,15 @@ def format_person(node):
         'sex': props.get('sex', ''),
         'dateOfBirth': serialize_date(props.get('dateOfBirth')),
         'photoUrl': props.get('photoUrl', ''),
+        'phone': props.get('phone') or '',
+        'email': props.get('email') or '',
+        'facebookId': facebook_id,
+        'instagram': instagram,
+        'linkedin': linkedin,
+        'notes': props.get('notes') or '',
+        'facebookUrl': facebook_profile_url(facebook_id),
+        'instagramUrl': instagram_profile_url(instagram),
+        'linkedinUrl': linkedin_profile_url(linkedin),
     }
 
 

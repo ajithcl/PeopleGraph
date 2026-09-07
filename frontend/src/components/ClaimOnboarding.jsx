@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import AccountSettingsModal from './AccountSettingsModal'
+import PersonContactFields from './PersonContactFields'
 import PhotoAvatar from './PhotoAvatar'
 
 const ALLOWED = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
@@ -19,7 +21,7 @@ function claimError(message) {
   return message || 'Could not save who you are. Try again.'
 }
 
-export default function ClaimOnboarding({ session, onClaimed, onLogout }) {
+export default function ClaimOnboarding({ session, onClaimed, onLogout, onSessionUpdate }) {
   const [mode, setMode] = useState('pick')
   const [query, setQuery] = useState('')
   const [persons, setPersons] = useState([])
@@ -30,11 +32,18 @@ export default function ClaimOnboarding({ session, onClaimed, onLogout }) {
   const [successPerson, setSuccessPerson] = useState(null)
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
+  const [showAccount, setShowAccount] = useState(false)
   const [form, setForm] = useState({
     name: session.user?.name || '',
     gender: 'male',
     nickName: '',
     dateOfBirth: '',
+    phone: '',
+    email: '',
+    facebookId: '',
+    instagram: '',
+    linkedin: '',
+    notes: '',
   })
 
   const spaceName = (session.spaces || []).find((s) => s.id === session.spaceId)?.name || 'your family'
@@ -262,6 +271,7 @@ export default function ClaimOnboarding({ session, onClaimed, onLogout }) {
                 className="w-full p-3 border border-slate-200 rounded-xl"
               />
             </div>
+            <PersonContactFields formData={form} onChange={(e) => setForm({ ...form, [e.target.name]: e.target.value })} compact />
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Photo (optional)</span>
               <input
@@ -282,10 +292,19 @@ export default function ClaimOnboarding({ session, onClaimed, onLogout }) {
           </form>
         )}
 
-        <button type="button" onClick={onLogout} className="mt-6 w-full text-sm text-slate-500 hover:underline">
-          Sign out
-        </button>
+        <div className="mt-6 flex flex-col sm:flex-row gap-2">
+          <button type="button" onClick={() => setShowAccount(true)} className="flex-1 text-sm text-indigo-600 font-semibold hover:underline">
+            Account settings
+          </button>
+          <button type="button" onClick={onLogout} className="flex-1 text-sm text-slate-500 hover:underline">
+            Sign out
+          </button>
+        </div>
       </div>
+
+      {showAccount && onSessionUpdate && (
+        <AccountSettingsModal session={session} onClose={() => setShowAccount(false)} onSessionUpdate={onSessionUpdate} />
+      )}
 
       {pending && (
         <div className="modal-overlay fixed inset-0 flex items-center justify-center z-50 p-4">

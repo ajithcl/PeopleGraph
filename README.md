@@ -52,6 +52,7 @@ Do not commit `.env`. Dummy values in `.env.example` must not be used in product
 1. Owner invites a relative (email if SMTP is configured, otherwise copy / Share / WhatsApp).
 2. Relative opens `/?invite=…`, creates an account, then confirms their listing (photo, nickname, year of birth, relatives).
 3. Explorer: search recenters the tree, path finder typeahead, **How am I related?** on a profile, generation rings on the canvas.
+4. **Account** (header) changes sign-in name, email, and password. That is separate from who you are on the family tree.
 
 SMTP is optional (console fallback, or Mailpit/Gmail in `DEPLOY.md`). Backups: `scripts/backup.py` / `scripts/restore.py`.
 

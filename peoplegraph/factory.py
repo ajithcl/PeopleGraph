@@ -139,7 +139,7 @@ def create_app():
                 'bootstrap': 'POST /api/auth/bootstrap',
                 'register': 'POST /api/auth/register',
                 'login': 'POST /api/auth/login',
-                'me': 'GET /api/auth/me',
+                'me': 'GET|PATCH /api/auth/me',
                 'spaces': 'GET|POST /api/spaces',
                 'space': 'GET|PATCH /api/spaces/<spaceId>',
                 'invites': 'GET|POST /api/spaces/<spaceId>/invites',

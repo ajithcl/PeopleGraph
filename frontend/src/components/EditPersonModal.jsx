@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, apiBase } from '../api'
+import PersonContactFields from './PersonContactFields'
 
 const ALLOWED = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
 
@@ -10,6 +11,12 @@ export default function EditPersonModal({ person, onClose, onSave }) {
     gender: person.gender || 'male',
     dateOfBirth: person.dateOfBirth || '',
     photoUrl: person.photoUrl || '',
+    phone: person.phone || '',
+    email: person.email || '',
+    facebookId: person.facebookId || '',
+    instagram: person.instagram || '',
+    linkedin: person.linkedin || '',
+    notes: person.notes || '',
   })
   const [selectedFile, setSelectedFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -119,6 +126,8 @@ export default function EditPersonModal({ person, onClose, onSave }) {
               <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg" />
             </div>
           </div>
+
+          <PersonContactFields formData={formData} onChange={handleChange} />
 
           <div className="border-t pt-4">
             <label className="block text-sm font-medium text-gray-700 mb-3">

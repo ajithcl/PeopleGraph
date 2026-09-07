@@ -38,6 +38,16 @@ Private, invite-only kinship graphs — relatives join a space and see how they 
 3. Hit `GET /health` and exercise the changed flow (not only a screenshot)
 4. Transition the Jira story to **Done** and update `STATUS.md`
 
+## Git push — update STATUS.md first
+
+Whenever the user asks to commit and/or push to the git remote:
+
+1. Update `STATUS.md` in the **same commit** as the code (never push without it).
+2. Set **Last updated** to today.
+3. Refresh **Current focus** (what just shipped vs what is next).
+4. Add or revise **What’s done** so it matches the changes being pushed.
+5. If a Jira story shipped, mark it Done in this file (and in Jira).
+
 ## Resume work
 
 1. Read `STATUS.md` for current focus and next Jira ticket

@@ -77,6 +77,7 @@ curl -s http://localhost:8010/api/spaces/$SPACE/persons \
 | POST | `/api/auth/register` | invite token | Invite-only |
 | POST | `/api/auth/login` | none | Returns JWT |
 | GET | `/api/auth/me` | JWT | User + spaces |
+| PATCH | `/api/auth/me` | JWT | Change name, email, password (current password required) |
 | GET/POST | `/api/spaces` | JWT | List / create |
 | GET/PATCH | `/api/spaces/<id>` | member / owner | Detail + members |
 | GET/POST | `/api/spaces/<id>/invites` | owner | Create/list invites |

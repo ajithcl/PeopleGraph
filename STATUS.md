@@ -1,11 +1,11 @@
 # PeopleGraph — STATUS
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Current focus
 
-- **Next:** Phase 7 stories **SCRUM-21–SCRUM-35** are implemented (skip **SCRUM-25**, already Done). Remaining work is live family use, SMTP for real mail, and public HTTPS/DNS — not more backlog tickets unless the pilot files them.
-- **Epic hygiene:** [SCRUM-31](https://ajith.atlassian.net/browse/SCRUM-31) is the Phases 1–6 reference epic.
+- **Next (product):** live family use — real SMTP and public HTTPS/DNS.
+- **Just shipped:** Person profiles can store phone, email, Facebook, Instagram, LinkedIn, and notes. Social links open that person’s profile in a new tab.
 
 ## Jira
 
@@ -114,9 +114,12 @@ project = SCRUM AND labels = peoplegraph AND issuetype = Story AND statusCategor
 - Dedicated Jira project named **PeopleGraph** (e.g. key `PG`) was requested but not created yet (MCP cannot create software projects). Until then, all work stays in **SCRUM** with label `peoplegraph`.
 - After creating `PG`, recreate or move these issues and update this section.
 - When finishing a story: transition it to **Done** in Jira and update **Current focus** above.
+- Before every `git push` to remote: update this file (date, Current focus, What’s done) and include it in the commit being pushed.
 
 ## What’s done (product)
 
+- Account settings: `PATCH /api/auth/me` — signed-in users change name, email, and password (current password required)
+- Person contact fields: phone, email, Facebook, Instagram, LinkedIn, notes (social links open the public profile URL)
 - Phases **1–6** shipped (see `PHASE1.md`–`PHASE6.md`); Phase 7 UX in `PHASE7.md` and this STATUS
 - [SCRUM-21](https://ajith.atlassian.net/browse/SCRUM-21)–[SCRUM-24](https://ajith.atlassian.net/browse/SCRUM-24), [SCRUM-26](https://ajith.atlassian.net/browse/SCRUM-26)–[SCRUM-35](https://ajith.atlassian.net/browse/SCRUM-35): claim confirm + family copy, magic-link register, multi-generation tree, path highlight/typeahead/How am I related, mobile layout, pytest, README, archived HTML, activity feed, invite/claim notification hooks
 - [SCRUM-12](https://ajith.atlassian.net/browse/SCRUM-12): legacy Person nodes assigned to space `Test Family` (`b11fde03-0e07-4249-b1ed-62939ab52a4c`)
@@ -153,7 +156,7 @@ cd frontend && npm run dev       # http://localhost:5173
 
 ## Resume prompt (paste in a new Agent chat)
 
-> Read `STATUS.md`, `PHASE7.md`, `DEPLOY.md`, and `.cursor/rules/peoplegraph.mdc`. Phase 7 stories 21–35 are implemented. Next is live family use (real SMTP + public HTTPS) unless new pilot tickets appear.
+> Read `STATUS.md`, `PHASE7.md`, `DEPLOY.md`, and `.cursor/rules/peoplegraph.mdc`. Phase 7 stories 21–35 are implemented. Account settings and person contact fields (phone, email, Facebook, Instagram, LinkedIn, notes) are shipped. Next is live family use (real SMTP + public HTTPS) unless new pilot tickets appear.
 
 ## Family pilot notes (SCRUM-13)
 
